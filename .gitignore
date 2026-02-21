@@ -58,3 +58,20 @@ build/
 # ── Misc ──
 .env
 *.log
+
+WLASL_raw/
+MuteMotion_raw/
+dataset/
+processed_data/
+logs/
+
+# Environment Variables (Keep API keys safe later)
+.env
+
+# Phase 5 Database Prep
+*.db
+*.sqlite3
+
+# OS System Files
+.DS_Store
+Thumbs.db
