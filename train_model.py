@@ -1,21 +1,23 @@
 """
-Vocalize — Phase 3: LSTM Neural Network Training
+Vocalize — Bi-LSTM + Attention Neural Network Training
 
-Loads padded keypoint sequences from processed_data/, trains a 3-layer
-LSTM with Masking + Dropout, and saves the model as action.h5.
+Loads padded keypoint sequences from processed_data/, trains a
+Bidirectional LSTM with a custom Attention layer, and saves the
+model as action.h5.
 
 Usage
 ─────
     python train_model.py --data_dir processed_data
     python train_model.py --data_dir processed_data --epochs 200 --seq_len 30
 
-Architecture
-────────────
-    Masking(0.0)          →  ignores zero-padded frames
-    LSTM(64,  return_seq) →  Dropout(0.2)
-    LSTM(128, return_seq) →  Dropout(0.2)
-    LSTM(64)              →  Dropout(0.2)
-    Dense(32, relu)
+Architecture (Functional API)
+─────────────────────────────
+    Input(30, 1662)
+    Masking(0.0)
+    Bidirectional(LSTM(128, return_seq))  →  Dropout(0.3)
+    Bidirectional(LSTM(64,  return_seq))  →  Dropout(0.3)
+    AttentionLayer()                      →  learns per-frame importance
+    Dense(64, relu)                       →  Dropout(0.3)
     Dense(n_classes, softmax)
 """
 
@@ -26,13 +28,15 @@ import argparse
 
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import (
+    Input,
     Masking,
     LSTM,
     Dense,
     Dropout,
+    Bidirectional,
 )
+from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import (
     EarlyStopping,
     TensorBoard,
@@ -40,6 +44,8 @@ from tensorflow.keras.callbacks import (
 )
 from tensorflow.keras.utils import to_categorical
 from sklearn.model_selection import train_test_split
+
+from attention import AttentionLayer
 
 # ──────────────────────────────────────────────
 # Constants
@@ -146,20 +152,13 @@ def pad_sequences_3d(
 
 
 # ──────────────────────────────────────────────
-# Model architecture
+# Model architecture — Bi-LSTM + Attention
 # ──────────────────────────────────────────────
 
-def build_model(seq_len: int, n_features: int, n_classes: int) -> Sequential:
+def build_model(seq_len: int, n_features: int, n_classes: int) -> Model:
     """
-    Build a Keras Sequential LSTM model with a Masking layer.
-
-    Architecture:
-        Masking(0.0)
-        LSTM(64,  return_sequences=True)  + Dropout(0.2)
-        LSTM(128, return_sequences=True)  + Dropout(0.2)
-        LSTM(64)                          + Dropout(0.2)
-        Dense(32, relu)
-        Dense(n_classes, softmax)
+    Build a Keras Functional-API model:
+        Masking → BiLSTM → BiLSTM → Attention → Dense → Softmax
 
     Args:
         seq_len:    Number of time-steps (frames).
@@ -169,24 +168,33 @@ def build_model(seq_len: int, n_features: int, n_classes: int) -> Sequential:
     Returns:
         Compiled Keras model.
     """
-    model = Sequential(name="Vocalize_LSTM")
+    inp = Input(shape=(seq_len, n_features), name="input_sequence")
 
     # ── Masking: ignore zero-padded frames ──
-    model.add(Masking(mask_value=MASK_VALUE, input_shape=(seq_len, n_features)))
+    x = Masking(mask_value=MASK_VALUE)(inp)
 
-    # ── LSTM stack ──
-    model.add(LSTM(64, return_sequences=True, activation="tanh"))
-    model.add(Dropout(0.2))
+    # ── Bidirectional LSTM stack ──
+    x = Bidirectional(
+        LSTM(128, return_sequences=True, activation="tanh"),
+        name="bilstm_1",
+    )(x)
+    x = Dropout(0.3)(x)
 
-    model.add(LSTM(128, return_sequences=True, activation="tanh"))
-    model.add(Dropout(0.2))
+    x = Bidirectional(
+        LSTM(64, return_sequences=True, activation="tanh"),
+        name="bilstm_2",
+    )(x)
+    x = Dropout(0.3)(x)
 
-    model.add(LSTM(64, return_sequences=False, activation="tanh"))
-    model.add(Dropout(0.2))
+    # ── Attention: learn which frames matter most ──
+    x = AttentionLayer(name="attention")(x)
 
     # ── Dense head ──
-    model.add(Dense(32, activation="relu"))
-    model.add(Dense(n_classes, activation="softmax"))
+    x = Dense(64, activation="relu")(x)
+    x = Dropout(0.3)(x)
+    out = Dense(n_classes, activation="softmax", name="output")(x)
+
+    model = Model(inputs=inp, outputs=out, name="Vocalize_BiLSTM_Attention")
 
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
@@ -203,7 +211,7 @@ def build_model(seq_len: int, n_features: int, n_classes: int) -> Sequential:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Vocalize Phase 3 — Train LSTM sign-language classifier",
+        description="Vocalize — Train Bi-LSTM + Attention sign-language classifier",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
@@ -215,8 +223,8 @@ def main():
         help=f"Uniform sequence length after pad/truncate (default: {SEQUENCE_LENGTH})",
     )
     parser.add_argument(
-        "--epochs", type=int, default=150,
-        help="Maximum training epochs (default: 150)",
+        "--epochs", type=int, default=200,
+        help="Maximum training epochs (default: 200)",
     )
     parser.add_argument(
         "--batch_size", type=int, default=16,
@@ -233,7 +241,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("  Vocalize — Phase 3  LSTM Trainer")
+    print("  Vocalize — Bi-LSTM + Attention Trainer")
     print("=" * 60)
     print(f"  Data dir  : {os.path.abspath(args.data_dir)}")
     print(f"  Seq length: {args.seq_len}")
@@ -273,11 +281,11 @@ def main():
     print(f"[INFO] Label map saved → {label_map_path}")
 
     # Callbacks
-    log_dir = os.path.join("logs", "vocalize_lstm")
+    log_dir = os.path.join("logs", "vocalize_bilstm_attn")
     callbacks = [
         EarlyStopping(
             monitor="val_categorical_accuracy",
-            patience=20,
+            patience=25,
             restore_best_weights=True,
             verbose=1,
         ),
