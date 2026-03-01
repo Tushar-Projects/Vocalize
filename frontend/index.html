@@ -1,14 +1,22 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Vocalize — Real-Time Sign Language Translation</title>
     <meta name="description" content="Vocalize: AI-powered real-time ASL/ISL sign language to text translation">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
 
         :root {
             --bg-primary: #0a0a0f;
@@ -41,17 +49,24 @@
         body::before {
             content: '';
             position: fixed;
-            top: -50%; left: -50%;
-            width: 200%; height: 200%;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
             background: radial-gradient(ellipse at 30% 20%, var(--accent-glow) 0%, transparent 50%),
-                        radial-gradient(ellipse at 70% 80%, rgba(0, 212, 170, 0.12) 0%, transparent 50%);
+                radial-gradient(ellipse at 70% 80%, rgba(0, 212, 170, 0.12) 0%, transparent 50%);
             z-index: -1;
             animation: ambientDrift 20s ease-in-out infinite alternate;
         }
 
         @keyframes ambientDrift {
-            0%   { transform: translate(0, 0) rotate(0deg); }
-            100% { transform: translate(-3%, 3%) rotate(2deg); }
+            0% {
+                transform: translate(0, 0) rotate(0deg);
+            }
+
+            100% {
+                transform: translate(-3%, 3%) rotate(2deg);
+            }
         }
 
         /* ── Header ── */
@@ -78,7 +93,8 @@
         }
 
         .logo-icon {
-            width: 32px; height: 32px;
+            width: 32px;
+            height: 32px;
             background: linear-gradient(135deg, var(--accent), var(--accent-alt));
             border-radius: 8px;
             display: flex;
@@ -107,7 +123,8 @@
         }
 
         .status-dot {
-            width: 8px; height: 8px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             background: var(--text-dim);
             transition: var(--transition);
@@ -124,8 +141,15 @@
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
         }
 
         /* ── Main layout ── */
@@ -247,7 +271,8 @@
         }
 
         .buffer-dots span {
-            width: 4px; height: 4px;
+            width: 4px;
+            height: 4px;
             border-radius: 50%;
             background: var(--text-dim);
             transition: background 0.15s;
@@ -312,7 +337,9 @@
             transform: none !important;
         }
 
-        .controls-spacer { flex: 1; }
+        .controls-spacer {
+            flex: 1;
+        }
 
         .fps-counter {
             font-size: 0.75rem;
@@ -382,12 +409,20 @@
         }
 
         @keyframes slideIn {
-            from { opacity: 0; transform: translateY(-8px); }
-            to   { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(-8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .transcript-index {
-            width: 28px; height: 28px;
+            width: 28px;
+            height: 28px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -469,17 +504,28 @@
             .main {
                 grid-template-columns: 1fr;
             }
+
             .sidebar {
                 max-height: 300px;
             }
         }
 
         /* ── Scrollbar ── */
-        ::-webkit-scrollbar { width: 5px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--text-dim); border-radius: 3px; }
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--text-dim);
+            border-radius: 3px;
+        }
     </style>
 </head>
+
 <body>
 
     <!-- Header -->
@@ -562,14 +608,15 @@
                 </div>
             </div>
 
-            <!-- Transcript card -->
+            <!-- DB-backed Transcript card -->
             <div class="card transcript-log">
                 <div class="card-header">
                     Transcript Log
                     <span class="count" id="logCount">0</span>
                 </div>
-                <div class="transcript-list" id="transcriptList">
-                    <div class="empty-state">
+                <div id="transcriptContainer" class="transcript-list"
+                    style="overflow-y:auto; max-height:calc(100vh - 340px);">
+                    <div class="empty-state" id="transcriptEmpty">
                         <div class="empty-state-icon">📝</div>
                         High-confidence detections will appear here
                     </div>
@@ -580,4 +627,5 @@
 
     <script src="app.js"></script>
 </body>
+
 </html>

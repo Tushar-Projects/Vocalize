@@ -23,7 +23,6 @@ let captureTimer = null;
 let sessionId = null;
 let frameCount = 0;
 let fpsTimestamp = 0;
-let transcriptLog = [];
 
 // ──────────────────────────────────────────────
 // DOM references
@@ -43,7 +42,6 @@ const sessionIdEl = document.getElementById('sessionId');
 const detectionCount = document.getElementById('detectionCount');
 const uniqueSigns = document.getElementById('uniqueSigns');
 const logCount = document.getElementById('logCount');
-const transcriptList = document.getElementById('transcriptList');
 const fpsCounter = document.getElementById('fpsCounter');
 const btnStart = document.getElementById('btnStart');
 const btnStop = document.getElementById('btnStop');
@@ -223,8 +221,8 @@ function updatePrediction(label, confidence, buffer) {
         confFill.style.background = 'linear-gradient(90deg, #22c55e, #4ade80)';
         predMeta.textContent = `Detected with ${pct}% confidence`;
 
-        // Add to transcript log
-        addTranscriptEntry(label, confidence);
+        // Fetch the updated transcript from the DB
+        fetchTranscriptHistory();
     } else {
         confFill.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)';
         predMeta.textContent = `Low confidence (${pct}%) — keep signing`;
@@ -242,52 +240,101 @@ function updateBuffer(count) {
 }
 
 // ──────────────────────────────────────────────
-// Transcript log (with client-side dedup)
+// DB-backed Transcript History
 // ──────────────────────────────────────────────
 
-let lastLoggedLabel = '';
-let lastLoggedTime = 0;
-const LOG_COOLDOWN = 1500; // ms
+const API_BASE = `${window.location.protocol}//${window.location.host}`;
+const transcriptContainer = document.getElementById('transcriptContainer');
+const transcriptEmpty = document.getElementById('transcriptEmpty');
 
-function addTranscriptEntry(label, confidence) {
-    const now = Date.now();
-    if (label === lastLoggedLabel && (now - lastLoggedTime) < LOG_COOLDOWN) return;
+let lastFetchedCount = 0;   // avoid redundant re-renders
+let isFetching = false;
 
-    lastLoggedLabel = label;
-    lastLoggedTime = now;
+/**
+ * Fetch the full transcript for the current session from the
+ * backend REST API and render it into the sidebar.
+ *
+ * Called from handleServerMessage whenever a high-confidence
+ * prediction arrives — no polling needed.
+ */
+async function fetchTranscriptHistory() {
+    if (!sessionId || isFetching) return;
+    isFetching = true;
 
-    const entry = { label, confidence, time: new Date() };
-    transcriptLog.push(entry);
+    try {
+        const res = await fetch(`${API_BASE}/transcripts/${sessionId}`);
 
-    // Update stats
-    detectionCount.textContent = transcriptLog.length;
-    const unique = new Set(transcriptLog.map(e => e.label));
-    uniqueSigns.textContent = unique.size;
-    logCount.textContent = transcriptLog.length;
+        if (res.status === 404) {
+            // No transcripts saved yet — nothing to render
+            isFetching = false;
+            return;
+        }
 
-    // Clear empty state
-    const empty = transcriptList.querySelector('.empty-state');
-    if (empty) empty.remove();
+        if (!res.ok) {
+            console.warn('[FETCH] Transcript fetch failed:', res.status);
+            isFetching = false;
+            return;
+        }
 
-    // Create entry element
-    const item = document.createElement('div');
-    item.className = 'transcript-item';
-    item.innerHTML = `
-        <div class="transcript-index">${transcriptLog.length}</div>
-        <div class="transcript-body">
-            <div class="transcript-word">${label}</div>
-            <div class="transcript-time">${formatTime(entry.time)}</div>
-        </div>
-        <div class="transcript-conf">${Math.round(confidence * 100)}%</div>
-    `;
+        const data = await res.json(); // array of TranscriptRead objects
 
-    // Prepend (newest first)
-    transcriptList.insertBefore(item, transcriptList.firstChild);
+        // Skip re-render if count hasn't changed
+        if (data.length === lastFetchedCount) {
+            isFetching = false;
+            return;
+        }
+        lastFetchedCount = data.length;
 
-    // Keep max 100 entries in DOM
-    while (transcriptList.children.length > 100) {
-        transcriptList.removeChild(transcriptList.lastChild);
+        renderTranscriptList(data);
+    } catch (err) {
+        console.error('[FETCH] Transcript fetch error:', err);
     }
+
+    isFetching = false;
+}
+
+/**
+ * Render the full transcript array into the sidebar container.
+ * Items are ordered by sequence_index ascending (chronological).
+ */
+function renderTranscriptList(items) {
+    // Hide empty state
+    if (transcriptEmpty) transcriptEmpty.style.display = 'none';
+
+    // Clear existing entries
+    transcriptContainer.querySelectorAll('.transcript-item').forEach(el => el.remove());
+
+    // Sort by sequence_index ascending (server should already do this)
+    items.sort((a, b) => a.sequence_index - b.sequence_index);
+
+    // Update sidebar stats
+    detectionCount.textContent = items.length;
+    const uniqueLabels = new Set(items.map(i => i.sign_label));
+    uniqueSigns.textContent = uniqueLabels.size;
+    logCount.textContent = items.length;
+
+    // Render each entry
+    items.forEach((item) => {
+        const el = document.createElement('div');
+        el.className = 'transcript-item';
+
+        const time = new Date(item.created_at);
+        const pct = Math.round(item.confidence * 100);
+
+        el.innerHTML = `
+            <div class="transcript-index">${item.sequence_index}</div>
+            <div class="transcript-body">
+                <div class="transcript-word">${item.sign_label}</div>
+                <div class="transcript-time">${formatTime(time)}</div>
+            </div>
+            <div class="transcript-conf">${pct}%</div>
+        `;
+
+        transcriptContainer.appendChild(el);
+    });
+
+    // Auto-scroll to the newest entry (bottom)
+    transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
 }
 
 // ──────────────────────────────────────────────
@@ -302,6 +349,14 @@ async function startStreaming() {
         btnStart.disabled = false;
         return;
     }
+
+    // Reset transcript state for the new session
+    lastFetchedCount = 0;
+    if (transcriptEmpty) transcriptEmpty.style.display = '';
+    transcriptContainer.querySelectorAll('.transcript-item').forEach(el => el.remove());
+    detectionCount.textContent = '0';
+    uniqueSigns.textContent = '0';
+    logCount.textContent = '0';
 
     connectWebSocket();
 
@@ -328,3 +383,4 @@ function stopStreaming() {
 
     btnStart.disabled = false;
 }
+
