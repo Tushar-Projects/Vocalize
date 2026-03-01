@@ -23,8 +23,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 # Phase 1 landmark extraction
 from landmark_extractor import mediapipe_detect, extract_keypoints
-# Phase 4 inference helper
-from realtime_inference import load_model_and_labels
+# Custom Attention layer (must be registered for model.load)
+from attention import AttentionLayer
 
 from backend.database import SessionLocal
 from backend.models import Transcript
@@ -53,15 +53,26 @@ _holistic = None
 
 
 def get_model():
-    """Lazy-load the LSTM model and warm it up."""
+    """Lazy-load the Bi-LSTM+Attention model with custom_objects and warm it up."""
     global _model, _label_map
     if _model is None:
-        logger.info(f"Loading LSTM model from {MODEL_PATH}")
-        _model, _label_map = load_model_and_labels(MODEL_PATH, LABELS_PATH)
+        import json as _json
+
+        logger.info(f"Loading model from {MODEL_PATH}")
+        _model = tf.keras.models.load_model(
+            MODEL_PATH,
+            custom_objects={"AttentionLayer": AttentionLayer},
+        )
+
+        logger.info(f"Loading labels from {LABELS_PATH}")
+        with open(LABELS_PATH, "r") as f:
+            raw = _json.load(f)
+        _label_map = {int(k): v for k, v in raw.items()}
+
         # Warm-up pass
         dummy = tf.constant(np.zeros((1, SEQUENCE_LENGTH, N_FEATURES), dtype=np.float32))
         _model(dummy, training=False)
-        logger.info("Model loaded and warmed up.")
+        logger.info(f"Model loaded and warmed up. Classes: {_label_map}")
     return _model, _label_map
 
 

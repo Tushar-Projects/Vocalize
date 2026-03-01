@@ -98,7 +98,12 @@ def draw_landmarks(image: np.ndarray, results) -> np.ndarray:
 
 def extract_keypoints(results) -> np.ndarray:
     """
-    Flatten all detected landmarks into a single 1-D NumPy array.
+    Flatten all detected landmarks into a single 1-D NumPy array
+    using **nose-relative** coordinates for translation invariance.
+
+    The nose (Pose Landmark 0) is used as the origin.  Its (x, y, z)
+    is subtracted from every other landmark so the data is
+    independent of where the user sits in the frame.
 
     Layout (1662 floats total):
         pose       — 33 landmarks × 4 (x, y, z, visibility) = 132
@@ -115,35 +120,45 @@ def extract_keypoints(results) -> np.ndarray:
     Returns:
         np.ndarray of shape (1662,) and dtype float64.
     """
-    # Pose: include visibility as a 4th value per landmark
+    # ── Reference point: nose (Pose Landmark 0) ──
+    nose_x, nose_y, nose_z = 0.0, 0.0, 0.0
     if results.pose_landmarks:
-        pose = np.array(
-            [[lm.x, lm.y, lm.z, lm.visibility] for lm in results.pose_landmarks.landmark]
-        ).flatten()
+        nose = results.pose_landmarks.landmark[0]
+        nose_x, nose_y, nose_z = nose.x, nose.y, nose.z
+
+    # ── Pose: (x-nose_x, y-nose_y, z-nose_z, visibility) ──
+    if results.pose_landmarks:
+        pose = np.array([
+            [lm.x - nose_x, lm.y - nose_y, lm.z - nose_z, lm.visibility]
+            for lm in results.pose_landmarks.landmark
+        ]).flatten()
     else:
         pose = np.zeros(33 * 4)
 
-    # Face
+    # ── Face: (x-nose_x, y-nose_y, z-nose_z) ──
     if results.face_landmarks:
-        face = np.array(
-            [[lm.x, lm.y, lm.z] for lm in results.face_landmarks.landmark]
-        ).flatten()
+        face = np.array([
+            [lm.x - nose_x, lm.y - nose_y, lm.z - nose_z]
+            for lm in results.face_landmarks.landmark
+        ]).flatten()
     else:
         face = np.zeros(468 * 3)
 
-    # Left hand
+    # ── Left hand ──
     if results.left_hand_landmarks:
-        left_hand = np.array(
-            [[lm.x, lm.y, lm.z] for lm in results.left_hand_landmarks.landmark]
-        ).flatten()
+        left_hand = np.array([
+            [lm.x - nose_x, lm.y - nose_y, lm.z - nose_z]
+            for lm in results.left_hand_landmarks.landmark
+        ]).flatten()
     else:
         left_hand = np.zeros(21 * 3)
 
-    # Right hand
+    # ── Right hand ──
     if results.right_hand_landmarks:
-        right_hand = np.array(
-            [[lm.x, lm.y, lm.z] for lm in results.right_hand_landmarks.landmark]
-        ).flatten()
+        right_hand = np.array([
+            [lm.x - nose_x, lm.y - nose_y, lm.z - nose_z]
+            for lm in results.right_hand_landmarks.landmark
+        ]).flatten()
     else:
         right_hand = np.zeros(21 * 3)
 

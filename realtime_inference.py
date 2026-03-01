@@ -58,8 +58,13 @@ def load_model_and_labels(
     Returns:
         (model, label_map) where label_map is {int: str}.
     """
+    from attention import AttentionLayer
+
     print(f"[INFO] Loading model from: {model_path}")
-    model = tf.keras.models.load_model(model_path)
+    model = tf.keras.models.load_model(
+        model_path,
+        custom_objects={"AttentionLayer": AttentionLayer},
+    )
 
     print(f"[INFO] Loading labels from: {labels_path}")
     with open(labels_path, "r") as f:
