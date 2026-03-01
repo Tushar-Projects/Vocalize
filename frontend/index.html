@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vocalize — Real-Time Sign Language Translation</title>
+    <meta name="description" content="Vocalize: AI-powered real-time ASL/ISL sign language to text translation">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a2e;
+            --bg-glass: rgba(26, 26, 46, 0.7);
+            --accent: #6c63ff;
+            --accent-glow: rgba(108, 99, 255, 0.35);
+            --accent-alt: #00d4aa;
+            --text-primary: #e8e8f0;
+            --text-secondary: #8888a0;
+            --text-dim: #555570;
+            --border: rgba(255, 255, 255, 0.06);
+            --success: #22c55e;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --radius: 16px;
+            --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── Ambient background ── */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(ellipse at 30% 20%, var(--accent-glow) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(0, 212, 170, 0.12) 0%, transparent 50%);
+            z-index: -1;
+            animation: ambientDrift 20s ease-in-out infinite alternate;
+        }
+
+        @keyframes ambientDrift {
+            0% {
+                transform: translate(0, 0) rotate(0deg);
+            }
+
+            100% {
+                transform: translate(-3%, 3%) rotate(2deg);
+            }
+        }
+
+        /* ── Header ── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 28px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 700;
+            font-size: 1.3rem;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: linear-gradient(135deg, var(--accent), var(--accent-alt));
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        .header-controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 500;
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border);
+            transition: var(--transition);
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            transition: var(--transition);
+        }
+
+        .status-badge.connected .status-dot {
+            background: var(--success);
+            box-shadow: 0 0 8px var(--success);
+            animation: pulse 2s infinite;
+        }
+
+        .status-badge.disconnected .status-dot {
+            background: var(--danger);
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        /* ── Main layout ── */
+        .main {
+            display: grid;
+            grid-template-columns: 1fr 360px;
+            gap: 20px;
+            padding: 20px 28px;
+            max-height: calc(100vh - 65px);
+        }
+
+        /* ── Video panel ── */
+        .video-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .video-container {
+            position: relative;
+            border-radius: var(--radius);
+            overflow: hidden;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            aspect-ratio: 16 / 9;
+        }
+
+        #webcam {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        #captureCanvas {
+            display: none;
+        }
+
+        /* ── Prediction overlay ── */
+        .prediction-overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 24px;
+            background: linear-gradient(transparent, rgba(0, 0, 0, 0.85));
+        }
+
+        .prediction-label {
+            font-size: 2.8rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            text-transform: uppercase;
+            background: linear-gradient(135deg, #fff, var(--accent-alt));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            transition: var(--transition);
+            min-height: 3.5rem;
+        }
+
+        .prediction-meta {
+            display: flex;
+            gap: 16px;
+            margin-top: 6px;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+        }
+
+        .confidence-bar-wrapper {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            width: 140px;
+        }
+
+        .confidence-label {
+            font-size: 0.72rem;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+            text-align: right;
+        }
+
+        .confidence-bar {
+            height: 6px;
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 3px;
+            background: linear-gradient(90deg, var(--warning), var(--success));
+            transition: width 0.3s ease, background 0.3s ease;
+        }
+
+        /* ── Buffer indicator ── */
+        .buffer-indicator {
+            position: absolute;
+            top: 16px;
+            left: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 12px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            border-radius: 8px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+        }
+
+        .buffer-dots {
+            display: flex;
+            gap: 2px;
+        }
+
+        .buffer-dots span {
+            width: 4px;
+            height: 4px;
+            border-radius: 50%;
+            background: var(--text-dim);
+            transition: background 0.15s;
+        }
+
+        .buffer-dots span.filled {
+            background: var(--accent);
+        }
+
+        /* ── Control bar ── */
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .btn:hover {
+            background: rgba(108, 99, 255, 0.15);
+            border-color: var(--accent);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #8b5cf6);
+            border: none;
+            color: #fff;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 20px var(--accent-glow);
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.15);
+            border-color: rgba(239, 68, 68, 0.3);
+            color: var(--danger);
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.25);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .controls-spacer {
+            flex: 1;
+        }
+
+        .fps-counter {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ── Sidebar ── */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            max-height: calc(100vh - 105px);
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 18px;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            font-size: 0.88rem;
+        }
+
+        .card-header .count {
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            padding: 2px 8px;
+            background: rgba(255, 255, 255, 0.04);
+            border-radius: 10px;
+        }
+
+        /* ── Transcript log ── */
+        .transcript-log {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
+
+        .transcript-list {
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .transcript-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            border-radius: 10px;
+            transition: background 0.2s;
+            animation: slideIn 0.3s ease;
+        }
+
+        .transcript-item:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-8px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .transcript-index {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            background: rgba(108, 99, 255, 0.12);
+            color: var(--accent);
+            font-size: 0.72rem;
+            font-weight: 600;
+            flex-shrink: 0;
+        }
+
+        .transcript-body {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .transcript-word {
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: capitalize;
+        }
+
+        .transcript-time {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            margin-top: 1px;
+        }
+
+        .transcript-conf {
+            font-size: 0.72rem;
+            color: var(--accent-alt);
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .empty-state {
+            padding: 40px 20px;
+            text-align: center;
+            color: var(--text-dim);
+            font-size: 0.82rem;
+        }
+
+        .empty-state-icon {
+            font-size: 2rem;
+            margin-bottom: 8px;
+        }
+
+        /* ── Session info card ── */
+        .session-info {
+            padding: 14px 18px;
+        }
+
+        .session-id {
+            font-family: 'Courier New', monospace;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+            word-break: break-all;
+        }
+
+        .session-stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 0.8rem;
+        }
+
+        .session-stat-label {
+            color: var(--text-secondary);
+        }
+
+        .session-stat-value {
+            color: var(--text-primary);
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+            .main {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                max-height: 300px;
+            }
+        }
+
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--text-dim);
+            border-radius: 3px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Header -->
+    <header class="header">
+        <div class="logo">
+            <div class="logo-icon">🤟</div>
+            <span>Vocalize</span>
+        </div>
+        <div class="header-controls">
+            <div id="statusBadge" class="status-badge disconnected">
+                <span class="status-dot"></span>
+                <span id="statusText">Disconnected</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main layout -->
+    <main class="main">
+        <!-- Video panel -->
+        <div class="video-panel">
+            <div class="video-container">
+                <video id="webcam" autoplay muted playsinline></video>
+                <canvas id="captureCanvas"></canvas>
+
+                <!-- Buffer indicator -->
+                <div class="buffer-indicator">
+                    <div class="buffer-dots" id="bufferDots"></div>
+                    <span id="bufferText">0/30</span>
+                </div>
+
+                <!-- Confidence bar -->
+                <div class="confidence-bar-wrapper">
+                    <div class="confidence-label" id="confLabel">Confidence: —</div>
+                    <div class="confidence-bar">
+                        <div class="confidence-fill" id="confFill"></div>
+                    </div>
+                </div>
+
+                <!-- Prediction overlay -->
+                <div class="prediction-overlay">
+                    <div class="prediction-label" id="predictionLabel">Waiting...</div>
+                    <div class="prediction-meta">
+                        <span id="predMeta">Start streaming to begin detection</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="controls">
+                <button class="btn btn-primary" id="btnStart" onclick="startStreaming()">
+                    ▶ Start
+                </button>
+                <button class="btn btn-danger" id="btnStop" onclick="stopStreaming()" disabled>
+                    ⏹ Stop
+                </button>
+                <div class="controls-spacer"></div>
+                <span class="fps-counter" id="fpsCounter">— FPS</span>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <!-- Session card -->
+            <div class="card">
+                <div class="card-header">
+                    Session
+                </div>
+                <div class="session-info">
+                    <div class="session-id" id="sessionId">—</div>
+                    <div style="margin-top: 10px;">
+                        <div class="session-stat">
+                            <span class="session-stat-label">Detections</span>
+                            <span class="session-stat-value" id="detectionCount">0</span>
+                        </div>
+                        <div class="session-stat">
+                            <span class="session-stat-label">Unique signs</span>
+                            <span class="session-stat-value" id="uniqueSigns">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DB-backed Transcript card -->
+            <div class="card transcript-log">
+                <div class="card-header">
+                    Transcript Log
+                    <span class="count" id="logCount">0</span>
+                </div>
+                <div id="transcriptContainer" class="transcript-list"
+                    style="overflow-y:auto; max-height:calc(100vh - 340px);">
+                    <div class="empty-state" id="transcriptEmpty">
+                        <div class="empty-state-icon">📝</div>
+                        High-confidence detections will appear here
+                    </div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

@@ -35,6 +35,7 @@ output/
 *.keras
 *.tflite
 *.pb
+*.json
 
 # ── IDE / Editor ──
 .vscode/
