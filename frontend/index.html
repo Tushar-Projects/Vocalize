@@ -499,6 +499,101 @@
             font-variant-numeric: tabular-nums;
         }
 
+        /* ── NLP Output card ── */
+        .nlp-card {
+            padding: 0;
+        }
+
+        .nlp-sentence-wrapper {
+            padding: 16px 18px;
+        }
+
+        .nlp-sentence-label {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-dim);
+            margin-bottom: 6px;
+        }
+
+        .nlp-sentence {
+            font-size: 1.05rem;
+            font-weight: 600;
+            line-height: 1.5;
+            background: linear-gradient(135deg, var(--text-primary), var(--accent-alt));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            min-height: 1.6rem;
+            word-wrap: break-word;
+        }
+
+        .nlp-sentence.empty {
+            background: none;
+            -webkit-text-fill-color: var(--text-dim);
+            font-weight: 400;
+            font-style: italic;
+            font-size: 0.82rem;
+        }
+
+        .nlp-gloss {
+            padding: 0 18px 10px;
+            font-size: 0.72rem;
+            color: var(--text-dim);
+        }
+
+        .nlp-gloss span {
+            color: var(--text-secondary);
+        }
+
+        .nlp-autocomplete {
+            padding: 12px 18px;
+            border-top: 1px solid var(--border);
+        }
+
+        .nlp-autocomplete-label {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+
+        .nlp-pills {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .nlp-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 5px 12px;
+            border-radius: 16px;
+            border: 1px solid rgba(108, 99, 255, 0.3);
+            background: rgba(108, 99, 255, 0.08);
+            color: var(--accent);
+            font-family: inherit;
+            font-size: 0.78rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .nlp-pill:hover {
+            background: rgba(108, 99, 255, 0.2);
+            border-color: var(--accent);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px var(--accent-glow);
+        }
+
+        .nlp-pill::before {
+            content: '+';
+            font-size: 0.7rem;
+            opacity: 0.6;
+        }
+
         /* ── Responsive ── */
         @media (max-width: 900px) {
             .main {
@@ -604,6 +699,25 @@
                             <span class="session-stat-label">Unique signs</span>
                             <span class="session-stat-value" id="uniqueSigns">0</span>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NLP Output card -->
+            <div class="card nlp-card">
+                <div class="card-header">
+                    AI Translation
+                    <span class="count" id="nlpStatus">idle</span>
+                </div>
+                <div class="nlp-sentence-wrapper">
+                    <div class="nlp-sentence-label">Corrected Sentence</div>
+                    <div class="nlp-sentence empty" id="nlpSentence">Waiting for signs...</div>
+                </div>
+                <div class="nlp-gloss" id="nlpGloss"></div>
+                <div class="nlp-autocomplete">
+                    <div class="nlp-autocomplete-label">Next Word Predictions</div>
+                    <div class="nlp-pills" id="nlpPills">
+                        <span style="font-size:0.75rem; color:var(--text-dim);">—</span>
                     </div>
                 </div>
             </div>

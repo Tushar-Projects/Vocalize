@@ -42,9 +42,15 @@ const sessionIdEl = document.getElementById('sessionId');
 const detectionCount = document.getElementById('detectionCount');
 const uniqueSigns = document.getElementById('uniqueSigns');
 const logCount = document.getElementById('logCount');
-const fpsCounter = document.getElementById('fpsCounter');
-const btnStart = document.getElementById('btnStart');
-const btnStop = document.getElementById('btnStop');
+const fpsCounter     = document.getElementById('fpsCounter');
+const btnStart       = document.getElementById('btnStart');
+const btnStop        = document.getElementById('btnStop');
+
+// NLP card references
+const nlpSentence    = document.getElementById('nlpSentence');
+const nlpGloss       = document.getElementById('nlpGloss');
+const nlpPills       = document.getElementById('nlpPills');
+const nlpStatus      = document.getElementById('nlpStatus');
 
 // Canvas dimensions set dynamically once webcam starts (preserves aspect ratio)
 
@@ -202,6 +208,8 @@ function stopCapture() {
 function handleServerMessage(msg) {
     if (msg.type === 'prediction') {
         updatePrediction(msg.label, msg.confidence, msg.buffer);
+    } else if (msg.type === 'nlp') {
+        renderNlpResult(msg);
     } else if (msg.type === 'status') {
         updateBuffer(msg.buffer || 0);
         predMeta.textContent = msg.message;
@@ -338,6 +346,69 @@ function renderTranscriptList(items) {
 }
 
 // ──────────────────────────────────────────────
+// NLP Result Rendering
+// ──────────────────────────────────────────────
+
+function renderNlpResult(msg) {
+    const sentence    = msg.corrected_sentence || '';
+    const suggestions = msg.auto_complete || [];
+    const rawGloss    = msg.raw_gloss || [];
+
+    // Update status badge
+    nlpStatus.textContent = 'updated';
+    setTimeout(() => { nlpStatus.textContent = 'idle'; }, 2000);
+
+    // Corrected sentence
+    if (sentence) {
+        nlpSentence.textContent = sentence;
+        nlpSentence.classList.remove('empty');
+    } else {
+        nlpSentence.textContent = 'Waiting for signs...';
+        nlpSentence.classList.add('empty');
+    }
+
+    // Raw gloss display
+    if (rawGloss.length > 0) {
+        nlpGloss.innerHTML = `Raw gloss: <span>${rawGloss.join(' → ')}</span>`;
+    } else {
+        nlpGloss.innerHTML = '';
+    }
+
+    // Auto-complete pills
+    nlpPills.innerHTML = '';
+    if (suggestions.length === 0) {
+        nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">—</span>';
+    } else {
+        suggestions.forEach(word => {
+            const pill = document.createElement('button');
+            pill.className = 'nlp-pill';
+            pill.textContent = word;
+            pill.title = `Predicted next word: ${word}`;
+            pill.addEventListener('click', () => {
+                // Visual feedback on click
+                pill.style.background = 'rgba(0, 212, 170, 0.2)';
+                pill.style.borderColor = 'var(--accent-alt)';
+                setTimeout(() => {
+                    pill.style.background = '';
+                    pill.style.borderColor = '';
+                }, 400);
+            });
+            nlpPills.appendChild(pill);
+        });
+    }
+
+    console.log('[NLP]', sentence, '| suggestions:', suggestions);
+}
+
+function resetNlpCard() {
+    nlpSentence.textContent = 'Waiting for signs...';
+    nlpSentence.classList.add('empty');
+    nlpGloss.innerHTML = '';
+    nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">—</span>';
+    nlpStatus.textContent = 'idle';
+}
+
+// ──────────────────────────────────────────────
 // Start / Stop controls
 // ──────────────────────────────────────────────
 
@@ -355,8 +426,11 @@ async function startStreaming() {
     if (transcriptEmpty) transcriptEmpty.style.display = '';
     transcriptContainer.querySelectorAll('.transcript-item').forEach(el => el.remove());
     detectionCount.textContent = '0';
-    uniqueSigns.textContent = '0';
-    logCount.textContent = '0';
+    uniqueSigns.textContent    = '0';
+    logCount.textContent       = '0';
+
+    // Reset NLP card
+    resetNlpCard();
 
     connectWebSocket();
 
