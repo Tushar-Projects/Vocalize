@@ -4,6 +4,7 @@ Vocalize — Inference WebSocket Router
 Receives Base64-encoded video frames from the browser via WebSocket,
 runs MediaPipe Holistic → LSTM inference, and sends predictions back.
 High-confidence detections are logged to PostgreSQL with deduplication.
+NLP grammar correction fires when no new sign is detected for 2 seconds.
 """
 
 import asyncio
@@ -25,6 +26,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from landmark_extractor import mediapipe_detect, extract_keypoints
 # Custom Attention layer (must be registered for model.load)
 from attention import AttentionLayer
+# Phase 7 NLP engine
+from backend.nlp_engine import correct_and_predict
 
 from backend.database import SessionLocal
 from backend.models import Transcript
@@ -40,6 +43,7 @@ SEQUENCE_LENGTH   = 30
 N_FEATURES        = 1662
 CONFIDENCE_THRESH = 0.60
 DEDUP_COOLDOWN_S  = 2.0   # minimum seconds between DB writes of the same label
+NLP_DEBOUNCE_S    = 2.0   # seconds of silence before triggering NLP
 
 # ──────────────────────────────────────────────
 # Model singleton (loaded once at import time)
@@ -141,6 +145,7 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
     Client → Server:  {"type": "frame", "data": "<base64 JPEG>"}
     Server → Client:  {"type": "prediction", "label": "...", "confidence": 0.85, "buffer": 30}
                       {"type": "status", "message": "..."}
+                      {"type": "nlp", "corrected_sentence": "...", "auto_complete": [...], "raw_gloss": [...]}
     """
     await websocket.accept()
     logger.info(f"[+] Inference session '{session_id}' connected")
@@ -151,10 +156,15 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
     # Rolling keypoint buffer
     sequence_buffer: deque[np.ndarray] = deque(maxlen=SEQUENCE_LENGTH)
 
-    # Deduplication state
+    # DB deduplication state
     last_saved_label = ""
     last_saved_time  = 0.0
     seq_counter      = 0
+
+    # ── NLP state (bulletproof) ──
+    session_words: list[str] = []         # accumulated gloss words
+    last_detected_word: str | None = None # last word appended to session_words
+    last_word_time: float = 0.0           # timestamp when last NEW word was added
 
     await websocket.send_text(json.dumps({
         "type": "status",
@@ -163,11 +173,9 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
 
     try:
         while True:
-            # ── Drain the queue: read all available messages, keep only
-            #    the newest frame to avoid processing stale backlog ──
+            # ── Drain the queue: keep only the newest frame ──
             latest_frame_data: str | None = None
 
-            # First message: blocking wait (normal read)
             raw = await websocket.receive_text()
             try:
                 msg = json.loads(raw)
@@ -176,8 +184,6 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
             except json.JSONDecodeError:
                 pass
 
-            # Non-blocking drain: pull any queued messages and keep
-            # overwriting latest_frame_data with the freshest frame
             while True:
                 try:
                     raw = await asyncio.wait_for(
@@ -190,7 +196,7 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
                     except json.JSONDecodeError:
                         pass
                 except asyncio.TimeoutError:
-                    break  # queue is empty, proceed with latest frame
+                    break
 
             if latest_frame_data is None:
                 continue
@@ -243,6 +249,14 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
                             f"[DB] session={session_id}  #{seq_counter}  "
                             f"{label} ({confidence:.0%})"
                         )
+
+                    # ── 5b. NLP word tracking (separate from DB dedup) ──
+                    if label != last_detected_word:
+                        session_words.append(label)
+                        last_detected_word = label
+                        last_word_time = now
+                        print(f"[NLP-TRACK] New word: '{label}' | session_words = {session_words}")
+
             else:
                 # Still buffering
                 await websocket.send_text(json.dumps({
@@ -250,6 +264,41 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
                     "message": f"Buffering... ({buf_len}/{SEQUENCE_LENGTH})",
                     "buffer": buf_len,
                 }))
+
+            # ══════════════════════════════════════════════════════════
+            # ── 6. NLP DEBOUNCE — runs on EVERY loop iteration ──
+            # ══════════════════════════════════════════════════════════
+            now = time.time()
+            if (
+                len(session_words) > 0
+                and last_word_time > 0
+                and (now - last_word_time) > NLP_DEBOUNCE_S
+            ):
+                print(f"🚨 Timer hit! Calling Groq... session_words={session_words}")
+
+                try:
+                    nlp_result = await correct_and_predict(list(session_words))
+                    print(f"✅ Groq response: {nlp_result}")
+
+                    await websocket.send_text(json.dumps({
+                        "type": "nlp",
+                        "corrected_sentence": nlp_result.get("corrected_sentence", ""),
+                        "auto_complete": nlp_result.get("auto_complete", []),
+                        "raw_gloss": list(session_words),
+                    }))
+
+                    logger.info(
+                        f"[NLP] session={session_id}  "
+                        f"gloss={session_words} → \"{nlp_result.get('corrected_sentence', '')}\""
+                    )
+                except Exception as e:
+                    print(f"❌ Groq API error: {e}")
+                    logger.error(f"[NLP] Error: {e}")
+
+                # Reset — clear words so we don't re-trigger
+                session_words.clear()
+                last_detected_word = None
+                last_word_time = 0.0
 
     except WebSocketDisconnect:
         logger.info(f"[-] Inference session '{session_id}' disconnected "
