@@ -1,12 +1,14 @@
 """
-Vocalize — NLP Engine (Groq-powered Grammar Correction & Auto-Complete)
+Vocalize — NLP Engine (Groq-powered Grammar Correction, Translation & Auto-Complete)
 
 Takes raw sign language gloss predictions and converts them into
-natural English using the Groq API (llama3-8b-8192).
+natural English, optionally translates to a target language, using
+the Groq API (llama-3.1-8b-instant).
 
 Returns:
-    corrected_sentence  — grammatically correct English string
-    auto_complete       — list of 3 logical next-word predictions
+    corrected_english  — grammatically correct English string
+    translated_text    — sentence translated to the target language
+    auto_complete      — list of 3 logical next-word predictions
 """
 
 import json
@@ -41,22 +43,27 @@ def _get_client() -> AsyncGroq:
 
 
 # ──────────────────────────────────────────────
-# System prompt — strict data-formatter mode
+# System prompt — single-pass correction + translation
 # ──────────────────────────────────────────────
 SYSTEM_PROMPT = """\
-You are a sign-language gloss-to-English converter.
+You are a sign-language gloss-to-English converter and translator.
 
 RULES — follow ALL of them strictly:
-1. You receive a JSON array of raw sign-language glosses (individual words detected from ASL/ISL).
-2. Reconstruct them into ONE grammatically correct, natural English sentence.
+1. You receive a JSON object with two keys:
+   - "words": array of raw sign-language glosses (individual words detected from ASL/ISL).
+   - "target_language": the language to translate into (e.g. "English", "Hindi", "Kannada", "Tamil", "Spanish").
+2. First, reconstruct the glosses into ONE grammatically correct, natural English sentence.
 3. Fix grammar, add articles/prepositions/conjunctions as needed, correct tense, but preserve the speaker's intent.
-4. Predict the 3 most likely NEXT words the speaker might sign, based on context.
-5. Return ONLY a JSON object — no markdown, no explanation, no filler text.
-6. The JSON object MUST have exactly two keys:
-   - "corrected_sentence": string (the corrected English sentence)
-   - "auto_complete": array of exactly 3 strings (next-word predictions)
-7. If the input is too short or ambiguous, still produce your best guess.
-8. Never add conversational filler like "Sure!" or "Here you go".
+4. Then translate that English sentence into the target_language.
+   - If target_language is "English", set translated_text to the same value as corrected_english.
+5. Predict the 3 most likely NEXT words the speaker might sign, based on context. These should always be in English.
+6. Return ONLY a JSON object — no markdown, no explanation, no filler text.
+7. The JSON object MUST have exactly three keys:
+   - "corrected_english": string (the grammatically correct English sentence)
+   - "translated_text": string (the sentence in the target language)
+   - "auto_complete": array of exactly 3 strings (next-word predictions in English)
+8. If the input is too short or ambiguous, still produce your best guess.
+9. Never add conversational filler like "Sure!" or "Here you go".
 """
 
 MODEL = "llama-3.1-8b-instant"
@@ -66,29 +73,38 @@ MODEL = "llama-3.1-8b-instant"
 # Public API
 # ──────────────────────────────────────────────
 
-async def correct_and_predict(words: list[str]) -> dict:
+async def correct_and_predict(
+    words: list[str],
+    target_language: str = "English",
+) -> dict:
     """
-    Send raw gloss words to Groq and get back corrected sentence
-    plus auto-complete suggestions.
+    Send raw gloss words to Groq and get back corrected sentence,
+    translation, and auto-complete suggestions.
 
     Args:
-        words: List of raw sign labels, e.g. ["I", "going", "shop"]
+        words:           List of raw sign labels, e.g. ["I", "going", "shop"]
+        target_language: Target language for translation (default: "English")
 
     Returns:
         {
-            "corrected_sentence": "I am going to the shop.",
+            "corrected_english": "I am going to the shop.",
+            "translated_text": "मैं दुकान जा रहा हूँ।",
             "auto_complete": ["tomorrow", "today", "now"]
         }
         On error, returns a fallback dict with the raw words joined.
     """
     if not words:
         return {
-            "corrected_sentence": "",
+            "corrected_english": "",
+            "translated_text": "",
             "auto_complete": [],
         }
 
     client = _get_client()
-    user_payload = json.dumps(words)
+    user_payload = json.dumps({
+        "words": words,
+        "target_language": target_language,
+    })
 
     try:
         response = await client.chat.completions.create(
@@ -99,14 +115,15 @@ async def correct_and_predict(words: list[str]) -> dict:
             ],
             response_format={"type": "json_object"},
             temperature=0.3,
-            max_tokens=200,
+            max_tokens=300,
         )
 
         raw_text = response.choices[0].message.content or ""
         result = json.loads(raw_text)
 
         # Validate expected keys
-        sentence = result.get("corrected_sentence", " ".join(words))
+        english = result.get("corrected_english", " ".join(words))
+        translated = result.get("translated_text", english)
         suggestions = result.get("auto_complete", [])
 
         # Enforce exactly 3 suggestions
@@ -115,18 +132,21 @@ async def correct_and_predict(words: list[str]) -> dict:
         suggestions = [str(s) for s in suggestions[:3]]
 
         logger.info(
-            f"[NLP] {words} → \"{sentence}\"  "
-            f"next: {suggestions}"
+            f"[NLP] {words} → EN:\"{english}\"  "
+            f"{target_language}:\"{translated}\"  next: {suggestions}"
         )
 
         return {
-            "corrected_sentence": sentence,
+            "corrected_english": english,
+            "translated_text": translated,
             "auto_complete": suggestions,
         }
 
     except Exception as e:
         logger.error(f"[NLP] Groq API error: {e}")
+        fallback = " ".join(words)
         return {
-            "corrected_sentence": " ".join(words),
+            "corrected_english": fallback,
+            "translated_text": fallback,
             "auto_complete": [],
         }

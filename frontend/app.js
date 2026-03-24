@@ -47,10 +47,12 @@ const btnStart       = document.getElementById('btnStart');
 const btnStop        = document.getElementById('btnStop');
 
 // NLP card references
-const nlpSentence    = document.getElementById('nlpSentence');
+const nlpTranslated  = document.getElementById('nlpTranslated');
+const nlpEnglish     = document.getElementById('nlpEnglish');
 const nlpGloss       = document.getElementById('nlpGloss');
 const nlpPills       = document.getElementById('nlpPills');
 const nlpStatus      = document.getElementById('nlpStatus');
+const langSelect     = document.getElementById('langSelect');
 
 // Canvas dimensions set dynamically once webcam starts (preserves aspect ratio)
 
@@ -136,6 +138,11 @@ function connectWebSocket() {
     ws.onopen = () => {
         console.log('[WS] Connected');
         setStatus('connected', 'Live');
+        // Send current language selection to backend
+        ws.send(JSON.stringify({
+            type: 'config',
+            target_language: langSelect.value,
+        }));
         startCapture();
     };
 
@@ -350,26 +357,35 @@ function renderTranscriptList(items) {
 // ──────────────────────────────────────────────
 
 function renderNlpResult(msg) {
-    const sentence    = msg.corrected_sentence || '';
+    const english     = msg.corrected_english || '';
+    const translated  = msg.translated_text || english;
     const suggestions = msg.auto_complete || [];
     const rawGloss    = msg.raw_gloss || [];
+    const lang        = msg.target_language || 'English';
 
     // Update status badge
     nlpStatus.textContent = 'updated';
     setTimeout(() => { nlpStatus.textContent = 'idle'; }, 2000);
 
-    // Corrected sentence
-    if (sentence) {
-        nlpSentence.textContent = sentence;
-        nlpSentence.classList.remove('empty');
+    // Translated text (prominent)
+    if (translated) {
+        nlpTranslated.textContent = translated;
+        nlpTranslated.classList.remove('empty');
     } else {
-        nlpSentence.textContent = 'Waiting for signs...';
-        nlpSentence.classList.add('empty');
+        nlpTranslated.textContent = 'Waiting for signs...';
+        nlpTranslated.classList.add('empty');
+    }
+
+    // English subtitle (shown when target != English)
+    if (lang !== 'English' && english) {
+        nlpEnglish.textContent = `EN: ${english}`;
+    } else {
+        nlpEnglish.textContent = '';
     }
 
     // Raw gloss display
     if (rawGloss.length > 0) {
-        nlpGloss.innerHTML = `Raw gloss: <span>${rawGloss.join(' → ')}</span>`;
+        nlpGloss.innerHTML = `Raw gloss: <span>${rawGloss.join(' \u2192 ')}</span>`;
     } else {
         nlpGloss.innerHTML = '';
     }
@@ -377,7 +393,7 @@ function renderNlpResult(msg) {
     // Auto-complete pills
     nlpPills.innerHTML = '';
     if (suggestions.length === 0) {
-        nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">—</span>';
+        nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">\u2014</span>';
     } else {
         suggestions.forEach(word => {
             const pill = document.createElement('button');
@@ -385,7 +401,6 @@ function renderNlpResult(msg) {
             pill.textContent = word;
             pill.title = `Predicted next word: ${word}`;
             pill.addEventListener('click', () => {
-                // Visual feedback on click
                 pill.style.background = 'rgba(0, 212, 170, 0.2)';
                 pill.style.borderColor = 'var(--accent-alt)';
                 setTimeout(() => {
@@ -397,16 +412,28 @@ function renderNlpResult(msg) {
         });
     }
 
-    console.log('[NLP]', sentence, '| suggestions:', suggestions);
+    console.log(`[NLP] ${lang}:`, translated, '| EN:', english, '| suggestions:', suggestions);
 }
 
 function resetNlpCard() {
-    nlpSentence.textContent = 'Waiting for signs...';
-    nlpSentence.classList.add('empty');
+    nlpTranslated.textContent = 'Waiting for signs...';
+    nlpTranslated.classList.add('empty');
+    nlpEnglish.textContent = '';
     nlpGloss.innerHTML = '';
-    nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">—</span>';
+    nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">\u2014</span>';
     nlpStatus.textContent = 'idle';
 }
+
+// Send language change to backend immediately
+langSelect.addEventListener('change', () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'config',
+            target_language: langSelect.value,
+        }));
+        console.log('[CONFIG] Language changed to:', langSelect.value);
+    }
+});
 
 // ──────────────────────────────────────────────
 // Start / Stop controls
