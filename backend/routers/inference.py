@@ -145,7 +145,7 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
     Client → Server:  {"type": "frame", "data": "<base64 JPEG>"}
     Server → Client:  {"type": "prediction", "label": "...", "confidence": 0.85, "buffer": 30}
                       {"type": "status", "message": "..."}
-                      {"type": "nlp", "corrected_sentence": "...", "auto_complete": [...], "raw_gloss": [...]}
+                      {"type": "nlp", "corrected_english": "...", "translated_text": "...", "auto_complete": [...], "raw_gloss": [...]}
     """
     await websocket.accept()
     logger.info(f"[+] Inference session '{session_id}' connected")
@@ -165,6 +165,7 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
     session_words: list[str] = []         # accumulated gloss words
     last_detected_word: str | None = None # last word appended to session_words
     last_word_time: float = 0.0           # timestamp when last NEW word was added
+    target_language: str = "English"       # user-selected output language
 
     await websocket.send_text(json.dumps({
         "type": "status",
@@ -181,6 +182,9 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
                 msg = json.loads(raw)
                 if msg.get("type") == "frame":
                     latest_frame_data = msg.get("data", "")
+                elif msg.get("type") == "config":
+                    target_language = msg.get("target_language", "English")
+                    print(f"[CONFIG] Target language set to: {target_language}")
             except json.JSONDecodeError:
                 pass
 
@@ -193,6 +197,9 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
                         msg = json.loads(raw)
                         if msg.get("type") == "frame":
                             latest_frame_data = msg.get("data", "")
+                        elif msg.get("type") == "config":
+                            target_language = msg.get("target_language", "English")
+                            print(f"[CONFIG] Target language set to: {target_language}")
                     except json.JSONDecodeError:
                         pass
                 except asyncio.TimeoutError:
@@ -277,14 +284,16 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
                 print(f"🚨 Timer hit! Calling Groq... session_words={session_words}")
 
                 try:
-                    nlp_result = await correct_and_predict(list(session_words))
+                    nlp_result = await correct_and_predict(list(session_words), target_language)
                     print(f"✅ Groq response: {nlp_result}")
 
                     await websocket.send_text(json.dumps({
                         "type": "nlp",
-                        "corrected_sentence": nlp_result.get("corrected_sentence", ""),
+                        "corrected_english": nlp_result.get("corrected_english", ""),
+                        "translated_text": nlp_result.get("translated_text", ""),
                         "auto_complete": nlp_result.get("auto_complete", []),
                         "raw_gloss": list(session_words),
+                        "target_language": target_language,
                     }))
 
                     logger.info(

@@ -594,6 +594,69 @@
             opacity: 0.6;
         }
 
+        /* ── Language selector ── */
+        .lang-selector-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 18px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .lang-selector-label {
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: var(--text-dim);
+        }
+
+        .lang-select {
+            background: var(--surface);
+            color: var(--text-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 5px 10px;
+            font-family: inherit;
+            font-size: 0.78rem;
+            cursor: pointer;
+            transition: var(--transition);
+            outline: none;
+        }
+
+        .lang-select:hover,
+        .lang-select:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px var(--accent-glow);
+        }
+
+        /* ── Translated text (prominent) ── */
+        .nlp-translated {
+            font-size: 1.1rem;
+            font-weight: 600;
+            line-height: 1.5;
+            background: linear-gradient(135deg, var(--text-primary), var(--accent-alt));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            min-height: 1.6rem;
+            word-wrap: break-word;
+        }
+
+        .nlp-translated.empty {
+            background: none;
+            -webkit-text-fill-color: var(--text-dim);
+            font-weight: 400;
+            font-style: italic;
+            font-size: 0.82rem;
+        }
+
+        .nlp-english-subtitle {
+            font-size: 0.78rem;
+            color: var(--text-dim);
+            margin-top: 4px;
+            font-style: italic;
+        }
+
         /* ── Responsive ── */
         @media (max-width: 900px) {
             .main {
@@ -709,9 +772,20 @@
                     AI Translation
                     <span class="count" id="nlpStatus">idle</span>
                 </div>
+                <div class="lang-selector-row">
+                    <span class="lang-selector-label">Output Language</span>
+                    <select class="lang-select" id="langSelect">
+                        <option value="English" selected>English</option>
+                        <option value="Hindi">Hindi</option>
+                        <option value="Kannada">Kannada</option>
+                        <option value="Tamil">Tamil</option>
+                        <option value="Spanish">Spanish</option>
+                    </select>
+                </div>
                 <div class="nlp-sentence-wrapper">
-                    <div class="nlp-sentence-label">Corrected Sentence</div>
-                    <div class="nlp-sentence empty" id="nlpSentence">Waiting for signs...</div>
+                    <div class="nlp-sentence-label">Translation</div>
+                    <div class="nlp-translated empty" id="nlpTranslated">Waiting for signs...</div>
+                    <div class="nlp-english-subtitle" id="nlpEnglish"></div>
                 </div>
                 <div class="nlp-gloss" id="nlpGloss"></div>
                 <div class="nlp-autocomplete">
