@@ -479,9 +479,151 @@ function stopStreaming() {
 
     predLabel.textContent = 'Stopped';
     predMeta.textContent = 'Press Start to resume';
-    confLabel.textContent = 'Confidence: —';
+    confLabel.textContent = 'Confidence: \u2014';
     confFill.style.width = '0%';
 
     btnStart.disabled = false;
 }
 
+// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// Web Speech API (Speech-to-Text)
+// Completely decoupled from the video/WebSocket pipeline.
+// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+const btnMic          = document.getElementById('btnMic');
+const micLabel        = document.getElementById('micLabel');
+const speechContainer = document.getElementById('speechContainer');
+const speechEmpty     = document.getElementById('speechEmpty');
+const speechStatus    = document.getElementById('speechStatus');
+
+let recognition = null;
+let micActive   = false;
+let finalTranscript = '';
+
+/**
+ * Initialize the SpeechRecognition instance (once).
+ * Returns null if the browser doesn't support the API.
+ */
+function initSpeechRecognition() {
+    if (!SpeechRecognition) {
+        console.warn('[SPEECH] Web Speech API not supported in this browser.');
+        return null;
+    }
+
+    const rec = new SpeechRecognition();
+    rec.continuous       = true;
+    rec.interimResults   = true;
+    rec.lang             = 'en-US';
+    rec.maxAlternatives  = 1;
+
+    rec.onstart = () => {
+        console.log('[SPEECH] Recognition started');
+        speechStatus.textContent = 'listening';
+    };
+
+    rec.onresult = (event) => {
+        let interimText = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+                finalTranscript += transcript + ' ';
+            } else {
+                interimText += transcript;
+            }
+        }
+
+        // Render: final text (solid) + interim text (gray italic)
+        speechContainer.innerHTML =
+            `<span class="final">${finalTranscript}</span>` +
+            `<span class="interim">${interimText}</span>`;
+
+        // Show container, hide empty state
+        speechContainer.style.display = '';
+        speechEmpty.style.display = 'none';
+
+        // Auto-scroll to bottom
+        speechContainer.scrollTop = speechContainer.scrollHeight;
+    };
+
+    rec.onerror = (event) => {
+        console.warn('[SPEECH] Error:', event.error);
+        // Don't crash the app — just log and deactivate if fatal
+        if (event.error === 'not-allowed' || event.error === 'service-not-available') {
+            stopMic();
+        }
+    };
+
+    rec.onend = () => {
+        console.log('[SPEECH] Recognition ended');
+        // Auto-restart if mic is still supposed to be active
+        // (browser can stop recognition after silence)
+        if (micActive && recognition) {
+            try {
+                recognition.start();
+            } catch (e) {
+                // Already started — ignore
+            }
+        } else {
+            speechStatus.textContent = 'off';
+        }
+    };
+
+    return rec;
+}
+
+/**
+ * Toggle microphone on/off. Called from the UI button.
+ */
+function toggleMic() {
+    if (micActive) {
+        stopMic();
+    } else {
+        startMic();
+    }
+}
+
+function startMic() {
+    if (!SpeechRecognition) {
+        alert('Your browser does not support the Web Speech API. Please use Chrome or Edge.');
+        return;
+    }
+
+    if (!recognition) {
+        recognition = initSpeechRecognition();
+    }
+    if (!recognition) return;
+
+    // Reset transcript for a fresh session
+    finalTranscript = '';
+    speechContainer.innerHTML = '';
+
+    try {
+        recognition.start();
+        micActive = true;
+        btnMic.classList.add('active');
+        micLabel.textContent = 'Mic On';
+        speechStatus.textContent = 'listening';
+        console.log('[SPEECH] Mic activated');
+    } catch (e) {
+        console.warn('[SPEECH] Start error:', e);
+    }
+}
+
+function stopMic() {
+    if (recognition) {
+        try {
+            recognition.stop();
+        } catch (e) {
+            // Not running — ignore
+        }
+    }
+
+    micActive = false;
+    btnMic.classList.remove('active');
+    micLabel.textContent = 'Mic Off';
+    speechStatus.textContent = 'off';
+    console.log('[SPEECH] Mic deactivated');
+}
