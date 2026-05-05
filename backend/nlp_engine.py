@@ -14,6 +14,7 @@ Returns:
 import json
 import logging
 import os
+import re
 
 from dotenv import load_dotenv
 from groq import AsyncGroq
@@ -119,7 +120,22 @@ async def correct_and_predict(
         )
 
         raw_text = response.choices[0].message.content or ""
-        result = json.loads(raw_text)
+
+        # ── Strip markdown fences the LLM sometimes wraps around JSON ──
+        raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text.strip())
+        raw_text = re.sub(r"\s*```$", "", raw_text.strip())
+
+        # ── Parse JSON with safe fallback ──
+        try:
+            result = json.loads(raw_text)
+        except json.JSONDecodeError as je:
+            logger.error(f"[NLP] JSON parse failed: {je}  raw={raw_text!r}")
+            print(f"[NLP] JSON parse failed: {je}\n  raw_text={raw_text!r}")
+            return {
+                "corrected_english": " ".join(words),
+                "translated_text": " ".join(words),
+                "auto_complete": [],
+            }
 
         # Validate expected keys
         english = result.get("corrected_english", " ".join(words))
@@ -144,9 +160,11 @@ async def correct_and_predict(
 
     except Exception as e:
         logger.error(f"[NLP] Groq API error: {e}")
+        print(f"[NLP] Groq API error: {e}")
         fallback = " ".join(words)
         return {
             "corrected_english": fallback,
             "translated_text": fallback,
             "auto_complete": [],
         }
+

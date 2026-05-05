@@ -301,8 +301,9 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
                         f"gloss={session_words} → \"{nlp_result.get('corrected_sentence', '')}\""
                     )
                 except Exception as e:
-                    print(f"❌ Groq API error: {e}")
+                    print(f"NLP Error: {e}")
                     logger.error(f"[NLP] Error: {e}")
+                    # Don't let NLP errors kill the video loop — just continue
 
                 # Reset — clear words so we don't re-trigger
                 session_words.clear()
