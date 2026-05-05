@@ -393,7 +393,7 @@ function renderNlpResult(msg) {
     // Auto-complete pills
     nlpPills.innerHTML = '';
     if (suggestions.length === 0) {
-        nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">\u2014</span>';
+        nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">--</span>';
     } else {
         suggestions.forEach(word => {
             const pill = document.createElement('button');
@@ -420,7 +420,7 @@ function resetNlpCard() {
     nlpTranslated.classList.add('empty');
     nlpEnglish.textContent = '';
     nlpGloss.innerHTML = '';
-    nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">\u2014</span>';
+    nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">--</span>';
     nlpStatus.textContent = 'idle';
 }
 
@@ -626,4 +626,18 @@ function stopMic() {
     micLabel.textContent = 'Mic Off';
     speechStatus.textContent = 'off';
     console.log('[SPEECH] Mic deactivated');
+}
+
+// ──────────────────────────────────────────────
+// Collapsible card toggle
+// ──────────────────────────────────────────────
+
+/**
+ * Toggle a sidebar card open/closed.
+ * Called from each .card-header's onclick.
+ */
+function toggleCard(headerEl) {
+    const wrapper = headerEl.nextElementSibling;
+    if (!wrapper || !wrapper.classList.contains('card-body-wrapper')) return;
+    wrapper.classList.toggle('collapsed');
 }

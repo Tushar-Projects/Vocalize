@@ -353,6 +353,7 @@
             flex-direction: column;
             gap: 16px;
             max-height: calc(100vh - 105px);
+            overflow-y: auto;
         }
 
         .card {
@@ -370,6 +371,35 @@
             border-bottom: 1px solid var(--border);
             font-weight: 600;
             font-size: 0.88rem;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .card-header .chevron {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            transition: transform 0.3s ease-out;
+            color: var(--text-dim);
+        }
+
+        .card-body-wrapper.collapsed .chevron {
+            transform: rotate(180deg);
+        }
+
+        /* ── Collapsible card body ── */
+        .card-body-wrapper {
+            display: grid;
+            grid-template-rows: 1fr;
+            transition: grid-template-rows 0.3s ease-out;
+        }
+
+        .card-body-wrapper.collapsed {
+            grid-template-rows: 0fr;
+        }
+
+        .card-body {
+            overflow: hidden;
         }
 
         .card-header .count {
@@ -753,6 +783,15 @@
             font-size: 1.4rem;
             margin-bottom: 6px;
         }
+
+        /* ── Past Word Predictions card ── */
+        .predictions-card {
+            padding: 0;
+        }
+
+        .predictions-body {
+            padding: 14px 18px;
+        }
     </style>
 </head>
 
@@ -761,7 +800,6 @@
     <!-- Header -->
     <header class="header">
         <div class="logo">
-            <div class="logo-icon">🤟</div>
             <span>Vocalize</span>
         </div>
         <div class="header-controls">
@@ -806,13 +844,13 @@
             <!-- Controls -->
             <div class="controls">
                 <button class="btn btn-primary" id="btnStart" onclick="startStreaming()">
-                    ▶ Start
+                    Start
                 </button>
                 <button class="btn btn-danger" id="btnStop" onclick="stopStreaming()" disabled>
-                    ⏹ Stop
+                    Stop
                 </button>
                 <button class="btn-mic" id="btnMic" onclick="toggleMic()">
-                    <span class="mic-icon">🎙</span>
+                    <svg class="mic-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="1" width="6" height="11" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                     <span id="micLabel">Mic Off</span>
                 </button>
                 <div class="controls-spacer"></div>
@@ -824,19 +862,24 @@
         <aside class="sidebar">
             <!-- Session card -->
             <div class="card">
-                <div class="card-header">
+                <div class="card-header" onclick="toggleCard(this)">
                     Session
+                    <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 </div>
-                <div class="session-info">
-                    <div class="session-id" id="sessionId">—</div>
-                    <div style="margin-top: 10px;">
-                        <div class="session-stat">
-                            <span class="session-stat-label">Detections</span>
-                            <span class="session-stat-value" id="detectionCount">0</span>
-                        </div>
-                        <div class="session-stat">
-                            <span class="session-stat-label">Unique signs</span>
-                            <span class="session-stat-value" id="uniqueSigns">0</span>
+                <div class="card-body-wrapper">
+                    <div class="card-body">
+                        <div class="session-info">
+                            <div class="session-id" id="sessionId">--</div>
+                            <div style="margin-top: 10px;">
+                                <div class="session-stat">
+                                    <span class="session-stat-label">Detections</span>
+                                    <span class="session-stat-value" id="detectionCount">0</span>
+                                </div>
+                                <div class="session-stat">
+                                    <span class="session-stat-label">Unique signs</span>
+                                    <span class="session-stat-value" id="uniqueSigns">0</span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -844,30 +887,46 @@
 
             <!-- NLP Output card -->
             <div class="card nlp-card">
-                <div class="card-header">
+                <div class="card-header" onclick="toggleCard(this)">
                     AI Translation
                     <span class="count" id="nlpStatus">idle</span>
+                    <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 </div>
-                <div class="lang-selector-row">
-                    <span class="lang-selector-label">Output Language</span>
-                    <select class="lang-select" id="langSelect">
-                        <option value="English" selected>English</option>
-                        <option value="Hindi">Hindi</option>
-                        <option value="Kannada">Kannada</option>
-                        <option value="Tamil">Tamil</option>
-                        <option value="Spanish">Spanish</option>
-                    </select>
+                <div class="card-body-wrapper">
+                    <div class="card-body">
+                        <div class="lang-selector-row">
+                            <span class="lang-selector-label">Output Language</span>
+                            <select class="lang-select" id="langSelect">
+                                <option value="English" selected>English</option>
+                                <option value="Hindi">Hindi</option>
+                                <option value="Kannada">Kannada</option>
+                                <option value="Tamil">Tamil</option>
+                                <option value="Spanish">Spanish</option>
+                            </select>
+                        </div>
+                        <div class="nlp-sentence-wrapper">
+                            <div class="nlp-sentence-label">Translation</div>
+                            <div class="nlp-translated empty" id="nlpTranslated">Waiting for signs...</div>
+                            <div class="nlp-english-subtitle" id="nlpEnglish"></div>
+                        </div>
+                        <div class="nlp-gloss" id="nlpGloss"></div>
+                    </div>
                 </div>
-                <div class="nlp-sentence-wrapper">
-                    <div class="nlp-sentence-label">Translation</div>
-                    <div class="nlp-translated empty" id="nlpTranslated">Waiting for signs...</div>
-                    <div class="nlp-english-subtitle" id="nlpEnglish"></div>
+            </div>
+
+            <!-- Past Word Predictions card -->
+            <div class="card predictions-card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    Past Word Predictions
+                    <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 </div>
-                <div class="nlp-gloss" id="nlpGloss"></div>
-                <div class="nlp-autocomplete">
-                    <div class="nlp-autocomplete-label">Next Word Predictions</div>
-                    <div class="nlp-pills" id="nlpPills">
-                        <span style="font-size:0.75rem; color:var(--text-dim);">—</span>
+                <div class="card-body-wrapper">
+                    <div class="card-body">
+                        <div class="predictions-body">
+                            <div class="nlp-pills" id="nlpPills">
+                                <span style="font-size:0.75rem; color:var(--text-dim);">--</span>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -881,7 +940,6 @@
                 <div id="transcriptContainer" class="transcript-list"
                     style="overflow-y:auto; max-height:calc(100vh - 340px);">
                     <div class="empty-state" id="transcriptEmpty">
-                        <div class="empty-state-icon">📝</div>
                         High-confidence detections will appear here
                     </div>
                 </div>
@@ -889,14 +947,18 @@
 
             <!-- Spoken Input card (Speech-to-Text) -->
             <div class="card speech-card">
-                <div class="card-header">
+                <div class="card-header" onclick="toggleCard(this)">
                     Spoken Input
                     <span class="count" id="speechStatus">off</span>
+                    <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 </div>
-                <div id="speechContainer" class="speech-container" style="display:none;"></div>
-                <div id="speechEmpty" class="speech-empty">
-                    <div class="speech-empty-icon">🎙</div>
-                    Click the Mic button to start voice input
+                <div class="card-body-wrapper">
+                    <div class="card-body">
+                        <div id="speechContainer" class="speech-container" style="display:none;"></div>
+                        <div id="speechEmpty" class="speech-empty">
+                            Click the Mic button to start voice input
+                        </div>
+                    </div>
                 </div>
             </div>
         </aside>
