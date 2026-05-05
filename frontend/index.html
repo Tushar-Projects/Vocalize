@@ -413,8 +413,11 @@
         /* ── Transcript log ── */
         .transcript-log {
             flex: 1;
-            overflow-y: auto;
             min-height: 0;
+        }
+
+        .card-minimized {
+            flex: 0 0 auto !important;
         }
 
         .transcript-list {
@@ -784,7 +787,7 @@
             margin-bottom: 6px;
         }
 
-        /* ── Past Word Predictions card ── */
+        /* ── Next Word Predictions card ── */
         .predictions-card {
             padding: 0;
         }
@@ -914,10 +917,10 @@
                 </div>
             </div>
 
-            <!-- Past Word Predictions card -->
+            <!-- Next Word Predictions card -->
             <div class="card predictions-card">
                 <div class="card-header" onclick="toggleCard(this)">
-                    Past Word Predictions
+                    Next Word Predictions
                     <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 </div>
                 <div class="card-body-wrapper">
@@ -933,14 +936,19 @@
 
             <!-- DB-backed Transcript card -->
             <div class="card transcript-log">
-                <div class="card-header">
+                <div class="card-header" onclick="toggleCard(this)">
                     Transcript Log
                     <span class="count" id="logCount">0</span>
+                    <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 </div>
-                <div id="transcriptContainer" class="transcript-list"
-                    style="overflow-y:auto; max-height:calc(100vh - 340px);">
-                    <div class="empty-state" id="transcriptEmpty">
-                        High-confidence detections will appear here
+                <div class="card-body-wrapper">
+                    <div class="card-body">
+                        <div id="transcriptContainer" class="transcript-list"
+                            style="overflow-y:auto; max-height:calc(100vh - 340px);">
+                            <div class="empty-state" id="transcriptEmpty">
+                                High-confidence detections will appear here
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
