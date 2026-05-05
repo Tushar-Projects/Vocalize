@@ -640,4 +640,7 @@ function toggleCard(headerEl) {
     const wrapper = headerEl.nextElementSibling;
     if (!wrapper || !wrapper.classList.contains('card-body-wrapper')) return;
     wrapper.classList.toggle('collapsed');
+    // Also toggle card-minimized on the parent .card so flex:1 cards fully collapse
+    const card = headerEl.closest('.card');
+    if (card) card.classList.toggle('card-minimized');
 }
