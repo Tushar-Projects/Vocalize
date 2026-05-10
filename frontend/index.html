@@ -788,13 +788,63 @@
         }
 
         /* ── Next Word Predictions card ── */
-        .predictions-card {
-            padding: 0;
-        }
+        .predictions-card { padding: 0; }
+        .predictions-body { padding: 14px 18px; }
 
-        .predictions-body {
-            padding: 14px 18px;
+        /* ── Live Chat Room ── */
+        .room-card { padding: 0; }
+        .room-setup { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+        .room-input-row { display: flex; gap: 8px; }
+        .room-input {
+            flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--bg-secondary); color: var(--text-primary);
+            font-family: 'Courier New', monospace; font-size: 0.88rem;
+            letter-spacing: 2px; text-transform: uppercase; outline: none; transition: var(--transition);
         }
+        .room-input::placeholder { letter-spacing: 0; text-transform: none; font-family: 'Inter', sans-serif; color: var(--text-dim); }
+        .room-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+        .btn-room {
+            padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--bg-card); color: var(--text-primary); font-family: inherit;
+            font-size: 0.78rem; font-weight: 500; cursor: pointer; transition: var(--transition); white-space: nowrap;
+        }
+        .btn-room:hover { background: rgba(108, 99, 255, 0.15); border-color: var(--accent); }
+        .btn-room-primary { background: linear-gradient(135deg, var(--accent), #8b5cf6); border: none; color: #fff; }
+        .btn-room-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px var(--accent-glow); }
+        .room-hint { font-size: 0.7rem; color: var(--text-dim); text-align: center; }
+        .room-warning { font-size: 0.75rem; color: var(--warning); text-align: center; padding: 6px 0; display: none; }
+        .room-status { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+        .room-code-badge {
+            display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 8px;
+            background: rgba(108, 99, 255, 0.1); border: 1px solid rgba(108, 99, 255, 0.25);
+            font-family: 'Courier New', monospace; font-size: 1rem; font-weight: 700;
+            letter-spacing: 3px; color: var(--accent); cursor: pointer; transition: var(--transition); align-self: flex-start;
+        }
+        .room-code-badge:hover { background: rgba(108, 99, 255, 0.2); }
+        .room-code-badge .copy-hint { font-size: 0.65rem; font-family: 'Inter', sans-serif; letter-spacing: 0; color: var(--text-dim); font-weight: 400; }
+        .peer-status { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; }
+        .peer-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); transition: var(--transition); }
+        .peer-dot.online { background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 2s infinite; }
+        .peer-status-text { color: var(--text-secondary); }
+        .peer-status-text.online { color: var(--success); font-weight: 500; }
+        .room-status-row { display: flex; align-items: center; justify-content: space-between; }
+        .btn-leave {
+            padding: 6px 14px; border-radius: 8px; background: rgba(239, 68, 68, 0.12);
+            border: 1px solid rgba(239, 68, 68, 0.25); color: var(--danger); font-family: inherit;
+            font-size: 0.78rem; font-weight: 500; cursor: pointer; transition: var(--transition);
+        }
+        .btn-leave:hover { background: rgba(239, 68, 68, 0.25); }
+        .chat-feed { height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--border); }
+        .chat-empty { display: flex; align-items: center; justify-content: center; height: 100%; text-align: center; color: var(--text-dim); font-size: 0.8rem; font-style: italic; }
+        .chat-bubble { max-width: 80%; padding: 10px 14px; border-radius: 12px; animation: slideIn 0.3s ease; word-wrap: break-word; }
+        .chat-bubble.mine { background: linear-gradient(135deg, var(--accent), #8b5cf6); color: #fff; margin-left: auto; border-bottom-right-radius: 4px; }
+        .chat-bubble.partner { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); margin-right: auto; border-bottom-left-radius: 4px; }
+        .chat-bubble .chat-english { font-size: 0.88rem; font-weight: 500; line-height: 1.4; }
+        .chat-bubble .chat-translated { font-size: 0.78rem; margin-top: 4px; opacity: 0.85; font-style: italic; }
+        .chat-bubble.mine .chat-translated { opacity: 0.75; }
+        .chat-bubble.partner .chat-translated { color: var(--accent-alt); }
+        .chat-bubble .chat-time { font-size: 0.7rem; opacity: 0.6; display: block; margin-top: 4px; }
+        .chat-bubble.partner .chat-sender { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent); margin-bottom: 4px; font-weight: 600; }
     </style>
 </head>
 
@@ -948,6 +998,51 @@
                             <div class="empty-state" id="transcriptEmpty">
                                 High-confidence detections will appear here
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Live Chat Room card -->
+            <div class="card room-card" id="roomCard">
+                <div class="card-header" onclick="toggleCard(this)">
+                    Live Chat Room
+                    <span class="count" id="roomStatusBadge">offline</span>
+                    <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="card-body-wrapper">
+                    <div class="card-body">
+                        <!-- Room Setup (shown when not in a room) -->
+                        <div id="roomSetup" class="room-setup">
+                            <div class="room-input-row">
+                                <input type="text" class="room-input" id="roomCodeInput"
+                                       placeholder="Enter room code..." maxlength="6"
+                                       autocomplete="off" spellcheck="false">
+                                <button class="btn-room" id="btnGenCode" onclick="document.getElementById('roomCodeInput').value = generateRoomCode()">Generate</button>
+                            </div>
+                            <button class="btn-room btn-room-primary" id="btnJoinRoom" onclick="joinRoom(document.getElementById('roomCodeInput').value.trim().toUpperCase())">Join Room</button>
+                            <div class="room-hint">Share this code with your partner</div>
+                            <div class="room-warning" id="roomWarning"></div>
+                        </div>
+
+                        <!-- Room Status (shown when in a room) -->
+                        <div id="roomStatus" class="room-status" style="display:none;">
+                            <div class="room-status-row">
+                                <div class="room-code-badge" id="roomCodeBadge" onclick="copyRoomCode()" title="Click to copy">
+                                    <span id="roomCodeDisplay">------</span>
+                                    <span class="copy-hint">click to copy</span>
+                                </div>
+                                <button class="btn-leave" id="btnLeaveRoom" onclick="leaveRoom()">Leave</button>
+                            </div>
+                            <div class="peer-status">
+                                <span class="peer-dot" id="peerDot"></span>
+                                <span class="peer-status-text" id="peerStatusText">Waiting for partner...</span>
+                            </div>
+                        </div>
+
+                        <!-- Conversation Feed (shown when in a room) -->
+                        <div id="chatFeed" class="chat-feed" style="display:none;">
+                            <div class="chat-empty" id="chatEmpty">Start signing to send messages...</div>
                         </div>
                     </div>
                 </div>
