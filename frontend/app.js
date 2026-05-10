@@ -24,6 +24,12 @@ let sessionId = null;
 let frameCount = 0;
 let fpsTimestamp = 0;
 
+// ── Live Chat Room state ──
+let roomWs = null;
+let roomId = null;
+let roomConnected = false;
+let peerPresent = false;
+
 // ──────────────────────────────────────────────
 // DOM references
 // ──────────────────────────────────────────────
@@ -217,6 +223,8 @@ function handleServerMessage(msg) {
         updatePrediction(msg.label, msg.confidence, msg.buffer);
     } else if (msg.type === 'nlp') {
         renderNlpResult(msg);
+        relayNlpToRoom(msg);   // forward to signaling WS if connected
+        renderMyMessage(msg);   // show in chat feed
     } else if (msg.type === 'status') {
         updateBuffer(msg.buffer || 0);
         predMeta.textContent = msg.message;
@@ -643,4 +651,267 @@ function toggleCard(headerEl) {
     // Also toggle card-minimized on the parent .card so flex:1 cards fully collapse
     const card = headerEl.closest('.card');
     if (card) card.classList.toggle('card-minimized');
+}
+
+// ──────────────────────────────────────────────
+// Live Chat Room — Signaling WebSocket
+// ──────────────────────────────────────────────
+
+/**
+ * Generate a random 6-character alphanumeric room code (uppercase).
+ */
+function generateRoomCode() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+/**
+ * Join a signaling room by opening a second WebSocket.
+ * Requires the inference camera stream to be active.
+ */
+function joinRoom(code) {
+    const warningEl = document.getElementById('roomWarning');
+
+    // Validate: camera must be running
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        warningEl.textContent = 'Start the camera first';
+        warningEl.style.display = 'block';
+        return;
+    }
+
+    // Validate: code must be provided
+    if (!code || code.length === 0) {
+        warningEl.textContent = 'Enter a room code';
+        warningEl.style.display = 'block';
+        return;
+    }
+
+    warningEl.style.display = 'none';
+    roomId = code;
+
+    const url = `${WS_BASE}/ws/signaling/${roomId}`;
+    console.log('[ROOM] Connecting to', url);
+
+    try {
+        roomWs = new WebSocket(url);
+    } catch (err) {
+        console.warn('[ROOM] Failed to create WebSocket:', err);
+        return;
+    }
+
+    roomWs.onopen = () => {
+        console.log('[ROOM] Connected to room:', roomId);
+        roomConnected = true;
+        updateRoomUI();
+
+        // Send handshake so other peers know we joined
+        roomWs.send(JSON.stringify({
+            type: 'peer_joined',
+            peer_id: sessionId,
+        }));
+    };
+
+    roomWs.onmessage = (event) => {
+        try {
+            const msg = JSON.parse(event.data);
+
+            if (msg.type === 'room_info') {
+                // Server sends current room state on join
+                if (msg.peer_count >= 2) {
+                    peerPresent = true;
+                    updateRoomUI();
+                }
+            } else if (msg.type === 'peer_joined') {
+                peerPresent = true;
+                updateRoomUI();
+                console.log('[ROOM] Partner joined');
+            } else if (msg.type === 'peer_left') {
+                peerPresent = false;
+                updateRoomUI();
+                console.log('[ROOM] Partner left');
+            } else if (msg.type === 'nlp_relay') {
+                renderPartnerMessage(msg);
+            }
+        } catch (err) {
+            console.warn('[ROOM] Failed to parse message:', err);
+        }
+    };
+
+    roomWs.onclose = () => {
+        console.log('[ROOM] Disconnected');
+        if (roomConnected) {
+            // Unexpected disconnect
+            leaveRoom('Connection lost');
+        }
+    };
+
+    roomWs.onerror = (err) => {
+        console.warn('[ROOM] WebSocket error:', err);
+    };
+}
+
+/**
+ * Leave the current room. Closes the signaling WebSocket
+ * and resets all room state. Optionally shows a status message.
+ */
+function leaveRoom(statusMsg) {
+    if (roomWs) {
+        // Prevent onclose from triggering leaveRoom again
+        const tempWs = roomWs;
+        roomWs = null;
+        try { tempWs.close(); } catch (e) { /* ignore */ }
+    }
+
+    roomConnected = false;
+    peerPresent = false;
+    roomId = null;
+
+    // Reset UI: show setup, hide status + chat
+    document.getElementById('roomSetup').style.display = '';
+    document.getElementById('roomStatus').style.display = 'none';
+    document.getElementById('chatFeed').style.display = 'none';
+    document.getElementById('roomStatusBadge').textContent = statusMsg || 'offline';
+    document.getElementById('roomCodeInput').value = '';
+
+    // Clear chat messages
+    const feed = document.getElementById('chatFeed');
+    feed.querySelectorAll('.chat-bubble').forEach(el => el.remove());
+    document.getElementById('chatEmpty').style.display = '';
+
+    console.log('[ROOM] Left room', statusMsg ? `(${statusMsg})` : '');
+}
+
+/**
+ * Forward an NLP result to the signaling WebSocket for the partner.
+ * Only sends if connected and peer is present.
+ */
+function relayNlpToRoom(nlpMsg) {
+    if (roomWs && roomWs.readyState === WebSocket.OPEN && peerPresent) {
+        roomWs.send(JSON.stringify({
+            type: 'nlp_relay',
+            from: sessionId,
+            corrected_english: nlpMsg.corrected_english,
+            translated_text: nlpMsg.translated_text,
+            raw_gloss: nlpMsg.raw_gloss,
+            target_language: nlpMsg.target_language,
+        }));
+    }
+}
+
+/**
+ * Render the user's own NLP message in the chat feed (right-aligned).
+ */
+function renderMyMessage(nlpMsg) {
+    if (!roomConnected) return;
+
+    const english = nlpMsg.corrected_english || '';
+    const translated = nlpMsg.translated_text || '';
+    if (!english) return;
+
+    const feed = document.getElementById('chatFeed');
+    document.getElementById('chatEmpty').style.display = 'none';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble mine';
+
+    let html = `<div class="chat-english">${escapeHtml(english)}</div>`;
+    if (translated && translated !== english) {
+        html += `<div class="chat-translated">${escapeHtml(translated)}</div>`;
+    }
+    html += `<span class="chat-time">${formatTime(new Date())}</span>`;
+
+    bubble.innerHTML = html;
+    feed.appendChild(bubble);
+    feed.scrollTop = feed.scrollHeight;
+}
+
+/**
+ * Render a partner's relayed NLP message in the chat feed (left-aligned).
+ */
+function renderPartnerMessage(msg) {
+    if (!roomConnected) return;
+
+    const english = msg.corrected_english || '';
+    const translated = msg.translated_text || '';
+    if (!english) return;
+
+    const feed = document.getElementById('chatFeed');
+    document.getElementById('chatEmpty').style.display = 'none';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble partner';
+
+    let html = `<div class="chat-sender">Partner</div>`;
+    html += `<div class="chat-english">${escapeHtml(english)}</div>`;
+    if (translated && translated !== english) {
+        html += `<div class="chat-translated">${escapeHtml(translated)}</div>`;
+    }
+    html += `<span class="chat-time">${formatTime(new Date())}</span>`;
+
+    bubble.innerHTML = html;
+    feed.appendChild(bubble);
+    feed.scrollTop = feed.scrollHeight;
+}
+
+/**
+ * Copy the current room code to clipboard.
+ */
+function copyRoomCode() {
+    if (!roomId) return;
+    navigator.clipboard.writeText(roomId).then(() => {
+        const hint = document.querySelector('.room-code-badge .copy-hint');
+        hint.textContent = 'copied!';
+        setTimeout(() => { hint.textContent = 'click to copy'; }, 1500);
+    }).catch(err => {
+        console.warn('[ROOM] Copy failed:', err);
+    });
+}
+
+/**
+ * Update all room-related UI elements based on current state.
+ */
+function updateRoomUI() {
+    const setupEl = document.getElementById('roomSetup');
+    const statusEl = document.getElementById('roomStatus');
+    const feedEl = document.getElementById('chatFeed');
+    const badge = document.getElementById('roomStatusBadge');
+    const peerDot = document.getElementById('peerDot');
+    const peerText = document.getElementById('peerStatusText');
+    const codeDisplay = document.getElementById('roomCodeDisplay');
+
+    if (roomConnected) {
+        setupEl.style.display = 'none';
+        statusEl.style.display = '';
+        feedEl.style.display = '';
+        codeDisplay.textContent = roomId;
+        badge.textContent = 'live';
+
+        if (peerPresent) {
+            peerDot.classList.add('online');
+            peerText.textContent = 'Partner connected';
+            peerText.classList.add('online');
+        } else {
+            peerDot.classList.remove('online');
+            peerText.textContent = 'Waiting for partner...';
+            peerText.classList.remove('online');
+        }
+    } else {
+        setupEl.style.display = '';
+        statusEl.style.display = 'none';
+        feedEl.style.display = 'none';
+        badge.textContent = 'offline';
+    }
+}
+
+/**
+ * Escape HTML entities to prevent XSS in chat messages.
+ */
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
 }
