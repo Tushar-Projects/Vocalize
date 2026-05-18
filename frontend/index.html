@@ -37,6 +37,55 @@
             --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        /* ── Light mode overrides ── */
+        body.light {
+            --bg-primary: #f0f0f8;
+            --bg-secondary: #e2e2ee;
+            --bg-card: #ffffff;
+            --bg-glass: rgba(255, 255, 255, 0.8);
+            --text-primary: #1a1a2e;
+            --text-secondary: #4a4a6a;
+            --text-dim: #9090b0;
+            --border: rgba(0, 0, 0, 0.08);
+        }
+
+        body.light::before {
+            background: radial-gradient(ellipse at 30% 20%, rgba(108, 99, 255, 0.12) 0%, transparent 50%),
+                radial-gradient(ellipse at 70% 80%, rgba(0, 212, 170, 0.08) 0%, transparent 50%);
+        }
+
+        /* ── Theme toggle button ── */
+        .btn-theme {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: var(--transition);
+            flex-shrink: 0;
+        }
+
+        .btn-theme:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: rgba(108, 99, 255, 0.1);
+        }
+
+        .btn-theme svg {
+            width: 16px;
+            height: 16px;
+            transition: transform 0.4s ease;
+        }
+
+        .btn-theme:hover svg {
+            transform: rotate(20deg);
+        }
+
         body {
             font-family: 'Inter', -apple-system, sans-serif;
             background: var(--bg-primary);
@@ -856,6 +905,19 @@
             <span>Vocalize</span>
         </div>
         <div class="header-controls">
+            <button class="btn-theme" id="btnTheme" onclick="toggleTheme()" title="Toggle light/dark mode">
+                <!-- sun icon shown in dark mode, moon icon shown in light mode -->
+                <svg id="iconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="5"/>
+                    <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                    <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+                </svg>
+                <svg id="iconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+                </svg>
+            </button>
             <div id="statusBadge" class="status-badge disconnected">
                 <span class="status-dot"></span>
                 <span id="statusText">Disconnected</span>

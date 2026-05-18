@@ -915,3 +915,23 @@ function escapeHtml(str) {
     div.textContent = str;
     return div.innerHTML;
 }
+
+// ──────────────────────────────────────────────
+// Light / Dark mode toggle
+// ──────────────────────────────────────────────
+
+function toggleTheme() {
+    const isLight = document.body.classList.toggle('light');
+    document.getElementById('iconSun').style.display  = isLight ? 'none'  : '';
+    document.getElementById('iconMoon').style.display = isLight ? ''      : 'none';
+    localStorage.setItem('vocalize-theme', isLight ? 'light' : 'dark');
+}
+
+// Apply saved theme on load
+(function () {
+    if (localStorage.getItem('vocalize-theme') === 'light') {
+        document.body.classList.add('light');
+        document.getElementById('iconSun').style.display  = 'none';
+        document.getElementById('iconMoon').style.display = '';
+    }
+})();
