@@ -24,6 +24,20 @@ let sessionId = null;
 let frameCount = 0;
 let fpsTimestamp = 0;
 
+// ── Phase 11: Persistent client ID (survives page reloads) ──
+function getOrCreateClientId() {
+    let id = localStorage.getItem('vocalize-client-id');
+    if (!id) {
+        id = crypto.randomUUID();
+        localStorage.setItem('vocalize-client-id', id);
+    }
+    return id;
+}
+const clientId = getOrCreateClientId();
+
+// ── Phase 11: Custom gesture recording state ──
+let gestureRecording = false;
+
 // ── Live Chat Room state ──
 let roomWs = null;
 let roomId = null;
@@ -135,7 +149,7 @@ function connectWebSocket() {
     sessionId = generateSessionId();
     sessionIdEl.textContent = sessionId;
 
-    const url = `${WS_BASE}/ws/inference/${sessionId}`;
+    const url = `${WS_BASE}/ws/inference/${sessionId}?client_id=${clientId}`;
     console.log('[WS] Connecting to', url);
     setStatus('disconnected', 'Connecting...');
 
@@ -220,7 +234,7 @@ function stopCapture() {
 
 function handleServerMessage(msg) {
     if (msg.type === 'prediction') {
-        updatePrediction(msg.label, msg.confidence, msg.buffer);
+        updatePrediction(msg.label, msg.confidence, msg.buffer, msg.source);
     } else if (msg.type === 'nlp') {
         renderNlpResult(msg);
         relayNlpToRoom(msg);   // forward to signaling WS if connected
@@ -228,12 +242,37 @@ function handleServerMessage(msg) {
     } else if (msg.type === 'status') {
         updateBuffer(msg.buffer || 0);
         predMeta.textContent = msg.message;
+    } else if (msg.type === 'gesture_rep_captured') {
+        // Phase 11: Update recording progress
+        const progressEl = document.getElementById('gestureProgress');
+        if (progressEl) progressEl.textContent = `${msg.rep} / ${msg.of}`;
+    } else if (msg.type === 'gesture_rep_rejected') {
+        // Phase 11: Show rejection hint
+        const progressEl = document.getElementById('gestureProgress');
+        if (progressEl) progressEl.textContent = `Rejected: ${msg.reason} — try again`;
+    } else if (msg.type === 'gesture_recorded') {
+        // Phase 11: Recording complete
+        gestureRecording = false;
+        const btnRecord = document.getElementById('btnRecordGesture');
+        if (btnRecord) {
+            btnRecord.textContent = 'Record';
+            btnRecord.disabled = false;
+        }
+        const progressEl = document.getElementById('gestureProgress');
+        if (progressEl) progressEl.textContent = `✓ "${msg.label}" saved (${msg.samples} reps)`;
+        // Refresh the gesture list
+        fetchCustomGestures();
     }
 }
 
-function updatePrediction(label, confidence, buffer) {
+function updatePrediction(label, confidence, buffer, source) {
     // Update prediction display
     predLabel.textContent = label.toUpperCase();
+
+    // Phase 11: Show custom badge when source is "custom"
+    const isCustom = source === 'custom';
+    let badge = document.getElementById('customSourceBadge');
+    if (badge) badge.style.display = isCustom ? '' : 'none';
 
     // Confidence bar
     const pct = Math.round(confidence * 100);
@@ -241,8 +280,12 @@ function updatePrediction(label, confidence, buffer) {
     confFill.style.width = `${pct}%`;
 
     if (confidence >= 0.60) {
-        confFill.style.background = 'linear-gradient(90deg, #22c55e, #4ade80)';
-        predMeta.textContent = `Detected with ${pct}% confidence`;
+        confFill.style.background = isCustom
+            ? 'linear-gradient(90deg, #6c63ff, #a78bfa)'
+            : 'linear-gradient(90deg, #22c55e, #4ade80)';
+        predMeta.textContent = isCustom
+            ? `Custom sign — ${pct}% match`
+            : `Detected with ${pct}% confidence`;
 
         // Fetch the updated transcript from the DB
         fetchTranscriptHistory();
@@ -935,3 +978,115 @@ function toggleTheme() {
         document.getElementById('iconMoon').style.display = '';
     }
 })();
+
+// ──────────────────────────────────────────────
+// Phase 11 — Custom Gesture Recording & Management
+// ──────────────────────────────────────────────
+
+/**
+ * Start recording a custom gesture. Sends record_gesture_start
+ * to the backend with the user-entered label.
+ */
+function startGestureRecording() {
+    const labelInput = document.getElementById('gestureLabel');
+    const label = (labelInput ? labelInput.value.trim() : '');
+    if (!label) {
+        const progressEl = document.getElementById('gestureProgress');
+        if (progressEl) progressEl.textContent = 'Enter a label first';
+        return;
+    }
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        const progressEl = document.getElementById('gestureProgress');
+        if (progressEl) progressEl.textContent = 'Start the camera first';
+        return;
+    }
+
+    gestureRecording = true;
+    const btnRecord = document.getElementById('btnRecordGesture');
+    if (btnRecord) {
+        btnRecord.textContent = 'Recording...';
+        btnRecord.disabled = true;
+    }
+    const progressEl = document.getElementById('gestureProgress');
+    if (progressEl) progressEl.textContent = `0 / 5 — perform the sign`;
+
+    ws.send(JSON.stringify({
+        type: 'record_gesture_start',
+        label: label,
+    }));
+
+    console.log('[GESTURE] Recording started for:', label);
+}
+
+/**
+ * Fetch the list of custom gestures for this client and render
+ * them in the sidebar.
+ */
+async function fetchCustomGestures() {
+    try {
+        const res = await fetch(`${API_BASE}/gestures/${clientId}`);
+        if (!res.ok) {
+            console.warn('[GESTURE] Fetch failed:', res.status);
+            return;
+        }
+
+        const gestures = await res.json();
+        renderGestureList(gestures);
+    } catch (err) {
+        console.error('[GESTURE] Fetch error:', err);
+    }
+}
+
+/**
+ * Render the custom gesture list into the sidebar card.
+ */
+function renderGestureList(gestures) {
+    const container = document.getElementById('gestureListContainer');
+    const emptyState = document.getElementById('gestureEmpty');
+    if (!container) return;
+
+    // Remove existing items
+    container.querySelectorAll('.gesture-item').forEach(el => el.remove());
+
+    if (gestures.length === 0) {
+        if (emptyState) emptyState.style.display = '';
+        return;
+    }
+
+    if (emptyState) emptyState.style.display = 'none';
+
+    gestures.forEach(g => {
+        const el = document.createElement('div');
+        el.className = 'gesture-item';
+        el.innerHTML = `
+            <div class="gesture-item-body">
+                <div class="gesture-item-label">${escapeHtml(g.label)}</div>
+                <div class="gesture-item-meta">${g.rep_count} reps</div>
+            </div>
+            <button class="gesture-delete-btn" title="Delete" onclick="deleteCustomGesture('${g.id}')">&times;</button>
+        `;
+        container.appendChild(el);
+    });
+}
+
+/**
+ * Delete a custom gesture by ID.
+ */
+async function deleteCustomGesture(gestureId) {
+    try {
+        const res = await fetch(`${API_BASE}/gestures/${gestureId}`, {
+            method: 'DELETE',
+        });
+        if (res.ok || res.status === 204) {
+            console.log('[GESTURE] Deleted:', gestureId);
+            fetchCustomGestures(); // refresh list
+        } else {
+            console.warn('[GESTURE] Delete failed:', res.status);
+        }
+    } catch (err) {
+        console.error('[GESTURE] Delete error:', err);
+    }
+}
+
+// Load custom gestures on page load
+fetchCustomGestures();

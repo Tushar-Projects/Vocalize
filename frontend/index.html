@@ -894,6 +894,55 @@
         .chat-bubble.partner .chat-translated { color: var(--accent-alt); }
         .chat-bubble .chat-time { font-size: 0.7rem; opacity: 0.6; display: block; margin-top: 4px; }
         .chat-bubble.partner .chat-sender { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent); margin-bottom: 4px; font-weight: 600; }
+
+        /* ── Phase 11: Custom Signs card ── */
+        .gesture-card { padding: 0; }
+        .gesture-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; }
+        .gesture-input-row { display: flex; gap: 8px; }
+        .gesture-input {
+            flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
+            background: var(--bg-secondary); color: var(--text-primary);
+            font-family: inherit; font-size: 0.85rem; outline: none; transition: var(--transition);
+        }
+        .gesture-input::placeholder { color: var(--text-dim); }
+        .gesture-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+        .gesture-progress {
+            font-size: 0.75rem; color: var(--text-secondary);
+            min-height: 1.2em; transition: var(--transition);
+        }
+        .gesture-list { display: flex; flex-direction: column; gap: 4px; padding: 0 8px 8px; }
+        .gesture-item {
+            display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+            border-radius: 8px; transition: background 0.2s; animation: slideIn 0.3s ease;
+        }
+        .gesture-item:hover { background: rgba(255, 255, 255, 0.03); }
+        .gesture-item-body { flex: 1; min-width: 0; }
+        .gesture-item-label {
+            font-weight: 600; font-size: 0.85rem; text-transform: capitalize;
+            color: var(--text-primary);
+        }
+        .gesture-item-meta { font-size: 0.7rem; color: var(--text-dim); margin-top: 1px; }
+        .gesture-delete-btn {
+            width: 24px; height: 24px; border-radius: 6px; border: 1px solid rgba(239, 68, 68, 0.2);
+            background: rgba(239, 68, 68, 0.08); color: var(--danger); font-size: 1rem;
+            cursor: pointer; transition: var(--transition); display: flex;
+            align-items: center; justify-content: center; flex-shrink: 0; line-height: 1;
+        }
+        .gesture-delete-btn:hover {
+            background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4);
+        }
+        .gesture-empty {
+            padding: 16px 18px; text-align: center; color: var(--text-dim);
+            font-size: 0.78rem; font-style: italic;
+        }
+
+        /* ── Phase 11: Custom source badge on prediction overlay ── */
+        .custom-source-badge {
+            display: inline-block; padding: 3px 10px; border-radius: 12px;
+            background: rgba(108, 99, 255, 0.2); border: 1px solid rgba(108, 99, 255, 0.4);
+            color: var(--accent); font-size: 0.68rem; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px;
+        }
     </style>
 </head>
 
@@ -950,6 +999,7 @@
                 <!-- Prediction overlay -->
                 <div class="prediction-overlay">
                     <div class="prediction-label" id="predictionLabel">Waiting...</div>
+                    <span class="custom-source-badge" id="customSourceBadge" style="display:none;">Custom Sign</span>
                     <div class="prediction-meta">
                         <span id="predMeta">Start streaming to begin detection</span>
                     </div>
@@ -1040,6 +1090,34 @@
                         <div class="predictions-body">
                             <div class="nlp-pills" id="nlpPills">
                                 <span style="font-size:0.75rem; color:var(--text-dim);">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Phase 11: Custom Signs card -->
+            <div class="card gesture-card">
+                <div class="card-header" onclick="toggleCard(this)">
+                    Custom Signs
+                    <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="card-body-wrapper">
+                    <div class="card-body">
+                        <div class="gesture-body">
+                            <div class="gesture-input-row">
+                                <input type="text" class="gesture-input" id="gestureLabel"
+                                       placeholder="Sign label..." maxlength="100"
+                                       autocomplete="off" spellcheck="false">
+                                <button class="btn btn-primary" id="btnRecordGesture"
+                                        onclick="startGestureRecording()"
+                                        style="padding: 8px 14px; font-size: 0.78rem;">Record</button>
+                            </div>
+                            <div class="gesture-progress" id="gestureProgress"></div>
+                        </div>
+                        <div id="gestureListContainer" class="gesture-list">
+                            <div class="gesture-empty" id="gestureEmpty">
+                                Teach the app new signs by recording here
                             </div>
                         </div>
                     </div>

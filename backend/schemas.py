@@ -43,3 +43,19 @@ class SessionSummary(BaseModel):
     labels: list[str]
     first_detection: datetime | None = None
     last_detection: datetime | None = None
+
+
+# ──────────────────────────────────────────────
+# Custom Gesture (Phase 11)
+# ──────────────────────────────────────────────
+
+class CustomGestureRead(BaseModel):
+    """Outgoing representation of a stored custom gesture (no raw embedding)."""
+    id: UUID
+    client_id: str
+    label: str
+    rep_count: int
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
