@@ -335,7 +335,7 @@ async def inference_endpoint(websocket: WebSocket, session_id: str):
                         recording_buffer = deque(maxlen=SEQUENCE_LENGTH)
                         recording_embeddings = []
                         recording_rep_count = 0
-                        logger.info(f"[GESTURE] Recording manually stopped")
+                        logger.info("[GESTURE] Recording manually stopped")
                         await websocket.send_text(json.dumps({
                             "type": "status",
                             "message": "Recording cancelled.",

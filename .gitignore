@@ -76,3 +76,6 @@ logs/
 # OS System Files
 .DS_Store
 Thumbs.db
+
+# ruff
+.ruff_cache

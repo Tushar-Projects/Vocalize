@@ -23,6 +23,7 @@ from backend.database import engine, Base
 
 # Import models so Base.metadata knows about all tables
 from backend import models  # noqa: F401
+from backend.routers import transcripts, signaling, inference, gestures
 
 # Ensure project root is on sys.path so inference.py can import
 # landmark_extractor and realtime_inference from the top level
@@ -30,7 +31,7 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from backend.routers import transcripts, signaling, inference, gestures
+
 
 # ──────────────────────────────────────────────
 # Logging

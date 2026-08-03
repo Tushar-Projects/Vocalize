@@ -18,7 +18,6 @@ Controls
 
 import os
 import json
-import time
 import argparse
 from collections import deque
 
