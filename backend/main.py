@@ -30,7 +30,7 @@ _PROJECT_ROOT = str(Path(__file__).resolve().parent.parent)
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-from backend.routers import transcripts, signaling, inference
+from backend.routers import transcripts, signaling, inference, gestures
 
 # ──────────────────────────────────────────────
 # Logging
@@ -94,6 +94,7 @@ app.add_middleware(
 app.include_router(transcripts.router)
 app.include_router(signaling.router)
 app.include_router(inference.router)
+app.include_router(gestures.router)
 
 # ── Serve frontend static files ──
 _FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"

@@ -17,7 +17,7 @@ from sqlalchemy import (
     Index,
     Text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ARRAY
 
 from backend.database import Base
 
@@ -101,4 +101,87 @@ class Transcript(Base):
         return (
             f"<Transcript(id={self.id!s:.8}, session={self.session_id}, "
             f"sign={self.sign_label}, conf={self.confidence:.2f})>"
+        )
+
+
+class CustomGesture(Base):
+    """
+    Stores user-recorded custom gesture embeddings for KNN matching.
+
+    Each row represents a single custom sign prototype — an averaged,
+    L2-normalized embedding vector derived from multiple recording reps.
+    Scoped by ``client_id`` (browser-persisted UUID) so gestures survive
+    page reloads and server restarts.  ``session_id`` is retained only
+    as provenance for debugging/analytics.
+
+    Indexes
+    -------
+    - ``ix_custom_gestures_client_id``  → fast per-client lookups
+    - ``ix_custom_gestures_created_at`` → fast time-range queries
+    - composite (client_id, label)      → fast per-client label lookup
+    """
+
+    __tablename__ = "custom_gestures"
+
+    # ── Primary key ──
+    id = Column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4,
+        nullable=False,
+        comment="Unique custom gesture ID",
+    )
+
+    # ── Client isolation (persistent, cross-session) ──
+    client_id = Column(
+        String(64),
+        nullable=False,
+        index=True,
+        comment="Browser-persisted client UUID — the persistent scoping key",
+    )
+
+    # ── Session provenance (informational only, not used for scoping) ──
+    session_id = Column(
+        String(64),
+        nullable=True,
+        comment="Which connection recorded this sign (debugging/analytics)",
+    )
+
+    # ── Gesture data ──
+    label = Column(
+        String(100),
+        nullable=False,
+        comment="User-defined label for the custom sign",
+    )
+
+    embedding = Column(
+        ARRAY(Float),
+        nullable=False,
+        comment="L2-normalized embedding vector from the attention layer",
+    )
+
+    rep_count = Column(
+        Integer,
+        nullable=False,
+        comment="Number of recording reps averaged into this prototype",
+    )
+
+    # ── Metadata ──
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        index=True,
+        comment="Timestamp of gesture creation",
+    )
+
+    # ── Composite index for per-client label lookup ──
+    __table_args__ = (
+        Index("ix_custom_gestures_client_label", "client_id", "label"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<CustomGesture(id={self.id!s:.8}, client={self.client_id}, "
+            f"label={self.label}, reps={self.rep_count})>"
         )
