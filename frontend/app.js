@@ -61,18 +61,18 @@ const statusText = document.getElementById('statusText');
 const sessionIdEl = document.getElementById('sessionId');
 const detectionCount = document.getElementById('detectionCount');
 const uniqueSigns = document.getElementById('uniqueSigns');
-const logCount = document.getElementById('logCount');
-const fpsCounter     = document.getElementById('fpsCounter');
-const btnStart       = document.getElementById('btnStart');
-const btnStop        = document.getElementById('btnStop');
+// const logCount = document.getElementById('logCount');
+const fpsCounter = document.getElementById('fpsCounter');
+const btnStart = document.getElementById('btnStart');
+const btnStop = document.getElementById('btnStop');
 
 // NLP card references
-const nlpTranslated  = document.getElementById('nlpTranslated');
-const nlpEnglish     = document.getElementById('nlpEnglish');
-const nlpGloss       = document.getElementById('nlpGloss');
-const nlpPills       = document.getElementById('nlpPills');
-const nlpStatus      = document.getElementById('nlpStatus');
-const langSelect     = document.getElementById('langSelect');
+const nlpTranslated = document.getElementById('nlpTranslated');
+const nlpEnglish = document.getElementById('nlpEnglish');
+const nlpGloss = document.getElementById('nlpGloss');
+const nlpPills = document.getElementById('nlpPills');
+// const nlpStatus      = document.getElementById('nlpStatus');
+const langSelect = document.getElementById('langSelect');
 
 // Canvas dimensions set dynamically once webcam starts (preserves aspect ratio)
 
@@ -82,6 +82,126 @@ for (let i = 0; i < 30; i++) {
     bufferDots.appendChild(dot);
 }
 const dots = bufferDots.querySelectorAll('span');
+
+// ──────────────────────────────────────────────
+// Window Manager — node registration
+// ──────────────────────────────────────────────
+
+const NODE_DEFS = [
+    {
+        id: 'webcam',
+        title: 'CH.01 \u00b7 WEBCAM',
+        contentId: 'node-webcam-content',
+        footerId: 'node-webcam-footer',
+        defaultRect: { x: 24, y: 24, w: 648, h: 504 },
+        minSize: { w: 340, h: 280 },
+        visible: true,
+    },
+    {
+        id: 'session',
+        title: 'CH.02 \u00b7 SESSION',
+        contentId: 'node-session-content',
+        defaultRect: { x: 696, y: 24, w: 312, h: 168 },
+        minSize: { w: 240, h: 120 },
+        visible: true,
+    },
+    {
+        id: 'translation',
+        title: 'CH.03 \u00b7 AI TRANSLATION',
+        contentId: 'node-translation-content',
+        defaultRect: { x: 696, y: 216, w: 312, h: 264 },
+        minSize: { w: 260, h: 180 },
+        visible: true,
+    },
+    {
+        id: 'predictions',
+        title: 'CH.04 \u00b7 NEXT WORD',
+        contentId: 'node-predictions-content',
+        defaultRect: { x: 696, y: 504, w: 312, h: 120 },
+        minSize: { w: 240, h: 96 },
+        visible: true,
+    },
+    {
+        id: 'gestures',
+        title: 'CH.05 \u00b7 CUSTOM SIGNS',
+        contentId: 'node-gestures-content',
+        defaultRect: { x: 1032, y: 24, w: 312, h: 312 },
+        minSize: { w: 260, h: 168 },
+        visible: true,
+    },
+    {
+        id: 'chat',
+        title: 'CH.06 \u00b7 LIVE CHAT',
+        contentId: 'node-chat-content',
+        defaultRect: { x: 1032, y: 360, w: 312, h: 360 },
+        minSize: { w: 260, h: 200 },
+        visible: true,
+    },
+    {
+        id: 'speech',
+        title: 'CH.07 \u00b7 SPOKEN INPUT',
+        contentId: 'node-speech-content',
+        defaultRect: { x: 24, y: 552, w: 648, h: 192 },
+        minSize: { w: 260, h: 120 },
+        visible: true,
+    },
+    {
+        id: 'transcript',
+        title: 'CH.08 \u00b7 TRANSCRIPT',
+        contentId: 'node-transcript-content',
+        defaultRect: { x: 1368, y: 24, w: 312, h: 504, _defaultVisible: false },
+        minSize: { w: 260, h: 168 },
+        visible: false,
+    },
+];
+
+const wm = new WindowManager(document.getElementById('canvas'), {
+    storageKey: `vocalize-layout-${clientId}`,
+    gridSize: 24,
+    snapThreshold: 8,
+});
+
+NODE_DEFS.forEach(def => {
+    const contentEl = document.getElementById(def.contentId);
+    const footerEl = def.footerId ? document.getElementById(def.footerId) : null;
+    wm.register(def.id, {
+        title: def.title,
+        contentEl,
+        footerEl,
+        defaultRect: def.defaultRect,
+        minSize: def.minSize,
+        visible: def.visible,
+    });
+});
+
+wm.mount();
+
+// Add count badges to node headers that need them
+const nlpStatusBadge = document.createElement('span');
+nlpStatusBadge.className = 'ch-count';
+nlpStatusBadge.id = 'nlpStatus';
+nlpStatusBadge.textContent = 'idle';
+wm.addToHeader('translation', nlpStatusBadge);
+const nlpStatus = nlpStatusBadge;
+
+const logCountBadge = document.createElement('span');
+logCountBadge.className = 'ch-count';
+logCountBadge.id = 'logCount';
+logCountBadge.textContent = '0';
+wm.addToHeader('transcript', logCountBadge);
+const logCount = logCountBadge;
+
+const roomBadge = document.createElement('span');
+roomBadge.className = 'ch-count';
+roomBadge.id = 'roomStatusBadge';
+roomBadge.textContent = 'offline';
+wm.addToHeader('chat', roomBadge);
+
+const speechBadge = document.createElement('span');
+speechBadge.className = 'ch-count';
+speechBadge.id = 'speechStatus';
+speechBadge.textContent = 'off';
+wm.addToHeader('speech', speechBadge);
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -259,7 +379,7 @@ function handleServerMessage(msg) {
             btnRecord.disabled = false;
         }
         const progressEl = document.getElementById('gestureProgress');
-        if (progressEl) progressEl.textContent = `✓ "${msg.label}" saved (${msg.samples} reps)`;
+        if (progressEl) progressEl.textContent = `"${msg.label}" saved (${msg.samples} reps)`;
         // Refresh the gesture list
         fetchCustomGestures();
     }
@@ -281,17 +401,17 @@ function updatePrediction(label, confidence, buffer, source) {
 
     if (confidence >= 0.60) {
         confFill.style.background = isCustom
-            ? 'linear-gradient(90deg, #6c63ff, #a78bfa)'
+            ? 'linear-gradient(90deg, #ffb020, #3fd0e0)'
             : 'linear-gradient(90deg, #22c55e, #4ade80)';
         predMeta.textContent = isCustom
-            ? `Custom sign — ${pct}% match`
+            ? `Custom sign -- ${pct}% match`
             : `Detected with ${pct}% confidence`;
 
         // Fetch the updated transcript from the DB
         fetchTranscriptHistory();
     } else {
         confFill.style.background = 'linear-gradient(90deg, #f59e0b, #fbbf24)';
-        predMeta.textContent = `Low confidence (${pct}%) — keep signing`;
+        predMeta.textContent = `Low confidence (${pct}%) -- keep signing`;
     }
 
     // Update buffer dots
@@ -408,11 +528,11 @@ function renderTranscriptList(items) {
 // ──────────────────────────────────────────────
 
 function renderNlpResult(msg) {
-    const english     = msg.corrected_english || '';
-    const translated  = msg.translated_text || english;
+    const english = msg.corrected_english || '';
+    const translated = msg.translated_text || english;
     const suggestions = msg.auto_complete || [];
-    const rawGloss    = msg.raw_gloss || [];
-    const lang        = msg.target_language || 'English';
+    const rawGloss = msg.raw_gloss || [];
+    const lang = msg.target_language || 'English';
 
     // Update status badge
     nlpStatus.textContent = 'updated';
@@ -444,7 +564,7 @@ function renderNlpResult(msg) {
     // Auto-complete pills
     nlpPills.innerHTML = '';
     if (suggestions.length === 0) {
-        nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">--</span>';
+        nlpPills.innerHTML = '<span style="font-size:0.72rem; color:var(--text-dim);">--</span>';
     } else {
         suggestions.forEach(word => {
             const pill = document.createElement('button');
@@ -452,8 +572,8 @@ function renderNlpResult(msg) {
             pill.textContent = word;
             pill.title = `Predicted next word: ${word}`;
             pill.addEventListener('click', () => {
-                pill.style.background = 'rgba(0, 212, 170, 0.2)';
-                pill.style.borderColor = 'var(--accent-alt)';
+                pill.style.background = 'rgba(63, 208, 224, 0.15)';
+                pill.style.borderColor = 'var(--accent-cyan)';
                 setTimeout(() => {
                     pill.style.background = '';
                     pill.style.borderColor = '';
@@ -471,7 +591,7 @@ function resetNlpCard() {
     nlpTranslated.classList.add('empty');
     nlpEnglish.textContent = '';
     nlpGloss.innerHTML = '';
-    nlpPills.innerHTML = '<span style="font-size:0.75rem; color:var(--text-dim);">--</span>';
+    nlpPills.innerHTML = '<span style="font-size:0.72rem; color:var(--text-dim);">--</span>';
     nlpStatus.textContent = 'idle';
 }
 
@@ -504,8 +624,8 @@ async function startStreaming() {
     if (transcriptEmpty) transcriptEmpty.style.display = '';
     transcriptContainer.querySelectorAll('.transcript-item').forEach(el => el.remove());
     detectionCount.textContent = '0';
-    uniqueSigns.textContent    = '0';
-    logCount.textContent       = '0';
+    uniqueSigns.textContent = '0';
+    logCount.textContent = '0';
 
     // Reset NLP card
     resetNlpCard();
@@ -543,14 +663,14 @@ function stopStreaming() {
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-const btnMic          = document.getElementById('btnMic');
-const micLabel        = document.getElementById('micLabel');
+const btnMic = document.getElementById('btnMic');
+const micLabel = document.getElementById('micLabel');
 const speechContainer = document.getElementById('speechContainer');
-const speechEmpty     = document.getElementById('speechEmpty');
-const speechStatus    = document.getElementById('speechStatus');
+const speechEmpty = document.getElementById('speechEmpty');
+const speechStatus = document.getElementById('speechStatus');
 
 let recognition = null;
-let micActive   = false;
+let micActive = false;
 let finalTranscript = '';
 
 /**
@@ -564,10 +684,10 @@ function initSpeechRecognition() {
     }
 
     const rec = new SpeechRecognition();
-    rec.continuous       = true;
-    rec.interimResults   = true;
-    rec.lang             = 'en-US';
-    rec.maxAlternatives  = 1;
+    rec.continuous = true;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+    rec.maxAlternatives = 1;
 
     rec.onstart = () => {
         console.log('[SPEECH] Recognition started');
@@ -680,20 +800,31 @@ function stopMic() {
 }
 
 // ──────────────────────────────────────────────
-// Collapsible card toggle
+// Window Manager toolbar controls
 // ──────────────────────────────────────────────
 
-/**
- * Toggle a sidebar card open/closed.
- * Called from each .card-header's onclick.
- */
-function toggleCard(headerEl) {
-    const wrapper = headerEl.nextElementSibling;
-    if (!wrapper || !wrapper.classList.contains('card-body-wrapper')) return;
-    wrapper.classList.toggle('collapsed');
-    // Also toggle card-minimized on the parent .card so flex:1 cards fully collapse
-    const card = headerEl.closest('.card');
-    if (card) card.classList.toggle('card-minimized');
+function toggleAddNodePanel() {
+    const panel = document.getElementById('addNodePanel');
+    panel.classList.toggle('open');
+}
+
+// Close the Add Node panel if clicking outside
+document.addEventListener('click', (e) => {
+    const wrapper = document.getElementById('addNodeWrapper');
+    const panel = document.getElementById('addNodePanel');
+    if (wrapper && panel && !wrapper.contains(e.target)) {
+        panel.classList.remove('open');
+    }
+});
+
+function resetLayout() {
+    wm.resetLayout();
+    // Re-sync the Add Node panel toggles
+    syncAddNodePanel();
+}
+
+function toggleNodeVisibility(nodeId) {
+    wm.toggle(nodeId);
 }
 
 // ──────────────────────────────────────────────
@@ -965,8 +1096,8 @@ function escapeHtml(str) {
 
 function toggleTheme() {
     const isLight = document.body.classList.toggle('light');
-    document.getElementById('iconSun').style.display  = isLight ? 'none'  : '';
-    document.getElementById('iconMoon').style.display = isLight ? ''      : 'none';
+    document.getElementById('iconSun').style.display = isLight ? 'none' : '';
+    document.getElementById('iconMoon').style.display = isLight ? '' : 'none';
     localStorage.setItem('vocalize-theme', isLight ? 'light' : 'dark');
 }
 
@@ -974,10 +1105,58 @@ function toggleTheme() {
 (function () {
     if (localStorage.getItem('vocalize-theme') === 'light') {
         document.body.classList.add('light');
-        document.getElementById('iconSun').style.display  = 'none';
+        document.getElementById('iconSun').style.display = 'none';
         document.getElementById('iconMoon').style.display = '';
     }
 })();
+
+// ──────────────────────────────────────────────
+// Add Node panel population + visibility sync
+// ──────────────────────────────────────────────
+
+function populateAddNodePanel() {
+    const panel = document.getElementById('addNodePanel');
+    if (!panel) return;
+    panel.innerHTML = '';
+
+    NODE_DEFS.forEach(def => {
+        const item = document.createElement('div');
+        item.className = 'add-node-item';
+        item.dataset.nodeId = def.id;
+
+        const label = document.createElement('span');
+        label.textContent = def.title;
+
+        const toggle = document.createElement('button');
+        toggle.className = 'add-node-toggle' + (wm.isVisible(def.id) ? ' on' : '');
+        toggle.dataset.nodeId = def.id;
+        toggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleNodeVisibility(def.id);
+            toggle.classList.toggle('on', wm.isVisible(def.id));
+        });
+
+        item.appendChild(label);
+        item.appendChild(toggle);
+        panel.appendChild(item);
+    });
+}
+
+function syncAddNodePanel() {
+    const toggles = document.querySelectorAll('.add-node-toggle');
+    toggles.forEach(t => {
+        const nid = t.dataset.nodeId;
+        t.classList.toggle('on', wm.isVisible(nid));
+    });
+}
+
+// Sync panel toggles when nodes are closed via their X button
+wm.onVisibilityChange(() => {
+    syncAddNodePanel();
+});
+
+// Build the panel
+populateAddNodePanel();
 
 // ──────────────────────────────────────────────
 // Phase 11 — Custom Gesture Recording & Management
@@ -1008,7 +1187,7 @@ function startGestureRecording() {
         btnRecord.disabled = true;
     }
     const progressEl = document.getElementById('gestureProgress');
-    if (progressEl) progressEl.textContent = `0 / 5 — perform the sign`;
+    if (progressEl) progressEl.textContent = `0 / 5 -- perform the sign`;
 
     ws.send(JSON.stringify({
         type: 'record_gesture_start',
