@@ -52,55 +52,83 @@ Vocalize links client-side video capture, server-side computer vision, deep temp
 ### End-to-End System Pipeline
 
 ```mermaid
-graph TD
-    subgraph Client["Client Browser (app.js & window-manager.js)"]
-        CAM["Webcam (15 FPS, 640px)"] --> B64["Base64 JPEG Encoder"]
-        B64 -->|WebSocket Frames| INF_WS["/ws/inference/{session_id}"]
-        UI_DISPLAY["Floating Windows UI"]
-        CHAT_UI["Live Chat Room"]
+%%{init: {
+  'theme': 'base',
+  'flowchart': { 'curve': 'linear', 'nodeSpacing': 70, 'rankSpacing': 90, 'padding': 24, 'htmlLabels': true },
+  'themeVariables': {
+    'background': '#0d1117',
+    'primaryColor': '#1e293b',
+    'primaryTextColor': '#f8fafc',
+    'primaryBorderColor': '#64748b',
+    'lineColor': '#94a3b8',
+    'textColor': '#f1f5f9',
+    'edgeLabelBackground': '#0d1117',
+    'fontFamily': 'Helvetica Neue, Arial, sans-serif',
+    'fontSize': '17px'
+  }
+}}%%
+flowchart TB
+    subgraph Tier1 [" "]
+        L1["<b>1</b>&nbsp;&nbsp;&nbsp;CLIENT<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PRESENTATION<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;LAYER<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]
+        S1a[" "]
+        UI["Web Workspace &amp;<br/>Media Capture Controller"]
+        S1b[" "]
     end
 
-    subgraph Backend["FastAPI Backend Server"]
-        INF_WS --> DRAIN["Frame Queue Drainer"]
-        DRAIN --> DEC["OpenCV Frame Decode"]
-        DEC --> MP["MediaPipe Holistic (1662 Keypoints)"]
-        MP --> NORM["Nose-Relative Normalization"]
-        NORM --> BUF["30-Frame Rolling Deque"]
-
-        BUF --> CLF["Bi-LSTM + Attention Model"]
-        CLF --> HEAD_BASE["Softmax Head (15 WLASL Classes)"]
-        CLF --> HEAD_EMBED["Attention Layer (128-dim Vector)"]
-
-        HEAD_EMBED --> KNN{"KNN Matcher (Distance < 0.75)"}
-        KNN -->|Match Found| CUSTOM_RES["Custom Sign Result"]
-        KNN -->|No Match| HEAD_BASE
-
-        HEAD_BASE --> DECISION["Hybrid Decision Engine"]
-        CUSTOM_RES --> DECISION
-
-        DECISION -->|Confidence >= 60%| DEDUP["Deduplication Filter (2s Cooldown)"]
-        DEDUP --> DB[("PostgreSQL Database")]
-        DECISION --> TRACK["Gloss Word Tracker"]
-        TRACK --> DEBOUNCE{"Signing Pause >= 2.0s?"}
-
-        DEBOUNCE -->|Yes| GROQ["Groq Cloud API (Llama 3.1 8B)"]
+    subgraph Tier2 [" "]
+        L2["<b>2</b>&nbsp;&nbsp;&nbsp;API GATEWAY<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&amp; ROUTING<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;LAYER<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]
+        SIG["Real-Time<br/>Signaling Service"]
+        INF["Gesture<br/>Inference Gateway"]
+        TRN["Transcript &amp;<br/>Catalog Service"]
     end
 
-    subgraph NLP_Output["NLP Reconstruct & Distribution"]
-        GROQ --> PARSE["JSON Response Parser"]
-        PARSE --> NLP_MSG["Corrected Text, Translation, Next Words"]
-        NLP_MSG -->|WebSocket Push| INF_WS
+    subgraph Tier3 [" "]
+        L3["<b>3</b>&nbsp;&nbsp;&nbsp;MACHINE<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;LEARNING<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&amp; NLP LAYER<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]
+        PREP["Landmark &amp;<br/>Sequence Pipeline"]
+        ATTN["Temporal Attention<br/>Classifier &amp; Embeddings"]
+        NLP["NLP Engine<br/>(Groq LLM)"]
     end
 
-    INF_WS --> UI_DISPLAY
-    UI_DISPLAY -->|nlp_relay| SIG_WS["/ws/signaling/{room_id}"]
-    SIG_WS -->|Broadcast Relay| CHAT_UI
-    SIG_WS -->|Broadcast Relay| PARTNER["Remote Partner Device"]
+    subgraph Tier4 [" "]
+        L4["<b>4</b>&nbsp;&nbsp;&nbsp;DATA<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;PERSISTENCE<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;LAYER<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"]
+        S4a[" "]
+        DB[("Relational Database &amp; ORM<br/>Transcripts · Custom Signs")]
+        S4b[" "]
+    end
 
-    classDef core fill:#f0f7ff,stroke:#0284c7,stroke-width:2px;
-    classDef comp fill:#f8fafc,stroke:#475569,stroke-width:1px;
-    class Client,Backend,NLP_Output core;
-    class CAM,B64,DEC,MP,NORM,BUF,CLF,KNN,DEDUP,DB,GROQ,PARSE,SIG_WS,PARTNER comp;
+    L1 ~~~ L2 ~~~ L3 ~~~ L4
+    S1a ~~~ SIG
+    S1b ~~~ TRN
+    PREP ~~~ S4a
+    NLP ~~~ S4b
+
+    %% Tier 1 ↔ Tier 2
+    UI <-->|"Chat &amp; Sentence Relay"| SIG
+    UI <-->|"JPEG Frames ⇄ Predictions"| INF
+    UI <-->|"History &amp; Catalog"| TRN
+
+    %% Tier 2 → Tier 3
+    INF -->|"Frame Decode &amp; Keypoints"| PREP
+    INF -->|"Keypoint Sequences"| ATTN
+    INF <-->|"Gloss ⇄ Sentence"| NLP
+
+    %% Tier 3 / 2 → Tier 4
+    ATTN -->|"Custom Sign Embeddings"| DB
+
+    style Tier1 fill:#161f2c,stroke:#334155,stroke-width:1.5px
+    style Tier2 fill:#161f2c,stroke:#334155,stroke-width:1.5px
+    style Tier3 fill:#161f2c,stroke:#334155,stroke-width:1.5px
+    style Tier4 fill:#161f2c,stroke:#334155,stroke-width:1.5px
+
+    classDef academicNode fill:#1e293b,stroke:#60a5fa,stroke-width:1.5px,color:#f8fafc
+    classDef storageNode fill:#1e293b,stroke:#94a3b8,stroke-width:1.5px,color:#f8fafc
+    classDef layerLabel fill:none,stroke:none,color:#cbd5e1,font-size:20px,text-align:left
+    classDef spacer fill:none,stroke:none,color:#161f2c
+    class UI,SIG,INF,TRN,PREP,ATTN,NLP academicNode
+    class DB storageNode
+    class L1,L2,L3,L4 layerLabel
+    class S1a,S1b,S4a,S4b spacer
+
 ```
 
 ### Dual WebSocket Channel Architecture
