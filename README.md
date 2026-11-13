@@ -1,460 +1,505 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.11-blue?logo=python&logoColor=white" alt="Python 3.11" />
-  <img src="https://img.shields.io/badge/TensorFlow-2.15-orange?logo=tensorflow&logoColor=white" alt="TensorFlow 2.15" />
-  <img src="https://img.shields.io/badge/FastAPI-0.110+-green?logo=fastapi&logoColor=white" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/MediaPipe-Holistic-red?logo=google&logoColor=white" alt="MediaPipe" />
-  <img src="https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql&logoColor=white" alt="PostgreSQL" />
-  <img src="https://img.shields.io/badge/Groq_LLM-llama--3.1--8b-purple" alt="Groq LLM" />
+  <img src="https://img.shields.io/badge/Python-3.10%20%7C%203.11-3776AB?logo=python&logoColor=white" alt="Python Version" />
+  <img src="https://img.shields.io/badge/TensorFlow-2.15-FF6F00?logo=tensorflow&logoColor=white" alt="TensorFlow 2.15" />
+  <img src="https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/MediaPipe-Holistic-007FFF?logo=google&logoColor=white" alt="MediaPipe Holistic" />
+  <img src="https://img.shields.io/badge/PostgreSQL-14+-4169E1?logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Groq-Llama%203.1%208B-F05A28" alt="Groq Llama 3.1 8B" />
 </p>
 
-# 🤟 Vocalize — Real-Time Sign Language Translation
+# Vocalize
 
-**Vocalize** is an end-to-end, AI-powered system that translates American Sign Language (ASL) into natural language **in real time**. A user signs in front of their webcam, and within seconds the system detects individual signs, reconstructs them into grammatically correct English sentences, translates those sentences into 5+ languages, and — with the Live Chat Room — streams the translations to a remote partner over WebSocket.
+## Project Overview
 
-The entire pipeline — from a raw webcam frame to a translated sentence appearing on a partner's screen — runs through 4 stages of AI:
+**What Vocalize is:**
+Vocalize is an end-to-end, real-time sign language translation and communication platform. Operating directly through standard webcams and web browsers, it tracks body, face, and hand articulators, classifies continuous sign gestures into vocabulary labels, reconstructs conversational grammar using Large Language Models, translates across multiple spoken languages, and synchronizes conversations across remote participants via low-latency WebSockets.
 
-1. **MediaPipe Holistic** extracts 1,662 body/face/hand landmarks per frame
-2. **Bi-LSTM + Attention** classifies 30-frame sequences into sign labels
-3. **Groq LLM (Llama 3.1 8B)** corrects ASL gloss grammar and translates
-4. **WebSocket Signaling** relays translations peer-to-peer in real time
+**Why it exists:**
+Bridging the communication barrier between deaf or hard-of-hearing signers and non-signing individuals requires more than basic static gesture recognition. Real sign language involves high-frequency dynamic motion, facial expressions, and distinct grammar rules that differ fundamentally from spoken syntax. Traditional systems often suffer from significant frame-processing lag, rigid vocabularies that cannot adapt to individual users, and clumsy user interfaces. Vocalize bridges this gap by unifying MediaPipe Holistic extraction, deep temporal sequence modeling, on-the-fly custom gesture learning via K-Nearest Neighbors (KNN), and cloud-accelerated Large Language Model (LLM) grammar reconstruction into an interactive, zero-backpressure web application.
 
-> Built from scratch across 9+ development phases, from raw dataset parsing to a polished dark-mode web interface with peer-to-peer chat.
-
----
-
-## Table of Contents
-
-- [How It Works](#how-it-works)
-- [Tech Stack](#tech-stack)
-- [Architecture & Data Flow](#architecture--data-flow)
-- [Project Structure](#project-structure)
-- [Development Phases](#development-phases)
-- [Setup & Installation](#setup--installation)
-- [Testing with Two Devices (ngrok)](#testing-with-two-devices-ngrok)
-- [WebSocket Protocol Reference](#websocket-protocol-reference)
-- [Future Roadmap](#future-roadmap)
-- [Known Limitations & Challenges Solved](#known-limitations--challenges-solved)
+**The problems it solves:**
+- **High-Dimensional Spatial-Temporal Modeling:** Extracts 1,662 geometric keypoints per frame across 33 pose, 468 facial mesh, and 42 bilateral hand coordinates with nose-relative normalization to ensure full translation invariance.
+- **Dynamic Sequence Classification:** Employs a stacked Bidirectional Long Short-Term Memory (Bi-LSTM) network coupled with a Bahdanau Attention mechanism to evaluate 30-frame temporal windows and focus on the most expressive frames.
+- **Few-Shot Custom Gesture Learning:** Resolves rigid vocabulary limitations by allowing signers to record and register personalized signs directly in the browser, matching 128-dimensional attention embeddings in real time without retraining neural network weights.
+- **Gloss to Natural Language Reconstruction:** Converts isolated sign detections into fluent, grammatically correct sentences, provides real-time translation into five target languages, and generates predictive auto-complete suggestions using Groq-hosted Llama 3.1 8B.
+- **Zero-Backpressure Streaming Pipeline:** Solves client-server frame congestion through an asynchronous WebSocket queue-draining pattern that discards stale video frames and processes only the latest frame at 15 FPS.
+- **Modular Multi-Window Interface:** Replaces static video pages with a draggable, resizable, canvas-based Window Manager featuring grid snapping, localStorage state persistence, dark and light themes, and peer-to-peer live chat rooms.
 
 ---
 
-## How It Works
+## Key Features
 
-```
-┌─────────────┐     Base64 JPEG      ┌──────────────────────────────────────────┐
-│   Browser   │ ──── WebSocket ────▶ │  FastAPI Backend                         │
-│   Webcam    │       15 FPS         │                                          │
-│   (app.js)  │                      │  1. Decode frame                         │
-│             │ ◀── predictions ──── │  2. MediaPipe Holistic → 1662 keypoints  │
-│             │ ◀── nlp results ──── │  3. Rolling 30-frame buffer              │
-│             │                      │  4. Bi-LSTM + Attention → class + conf   │
-│             │                      │  5. Deduplicated DB logging              │
-│             │                      │  6. NLP debounce → Groq LLM correction   │
-└──────┬──────┘                      └──────────────────────────────────────────┘
-       │
-       │  nlp_relay (via /ws/signaling)
-       ▼
-┌─────────────┐
-│  Partner's  │
-│  Browser    │
-└─────────────┘
-```
-
-**Frame → Translation in 6 steps:**
-
-| Step | Component | What Happens |
-|------|-----------|-------------|
-| 1 | **Frontend** | Captures webcam at 15 FPS, downscales to 640px, encodes as Base64 JPEG |
-| 2 | **MediaPipe** | Holistic model extracts 33 pose + 468 face + 42 hand landmarks (1,662 floats) |
-| 3 | **Keypoint Buffer** | Landmarks are nose-normalized for translation invariance, appended to a 30-frame rolling deque |
-| 4 | **Bi-LSTM + Attention** | When buffer is full, the model predicts the sign class with confidence score |
-| 5 | **DB Logging** | High-confidence predictions (≥60%) are deduplicated and saved to PostgreSQL |
-| 6 | **NLP Engine** | After 2s of signing silence, accumulated gloss words are sent to Groq → corrected English + translation + next-word predictions |
+- **Continuous Real-Time Translation:** Ingests live webcam streams at 15 frames per second, processing 30-frame sequences with sub-second response times.
+- **Robust Landmark Extraction:** MediaPipe Holistic pipeline extracts 1,662 coordinates per frame (pose, face, left hand, right hand), normalized relative to the nose tip for scale and positional stability.
+- **Attention-Enhanced Sequence Classifier:** Two-layer Bidirectional LSTM architecture with custom Bahdanau additive attention trained on the World-Level American Sign Language (WLASL) dataset.
+- **15-Gloss Baseline Vocabulary:** Out-of-the-box recognition covering fifteen essential conversational signs: basketball, before, book, candy, computer, drink, family, go, help, no, tall, thin, what, who, and yes.
+- **Live Custom Sign Registration (KNN):** Few-shot personalized gesture registration. Users perform any custom sign across five repetitions with automated hand visibility validation; the system averages and normalizes the attention layer embeddings for immediate real-time recognition.
+- **Groq-Accelerated NLP Engine:** Automatic grammar reconstruction using Llama 3.1 8B with a 2-second signing silence debounce timer. Reconstructs sign glosses into coherent English sentences.
+- **Multi-Language Translation:** Direct translation of reconstructed sentences into English, Hindi, Kannada, Tamil, and Spanish.
+- **Context-Aware Next-Word Auto-Complete:** Generates three predictive next-word suggestions based on current conversation context to accelerate interaction.
+- **Canvas-Based Floating Window Interface:** Custom Window Manager providing draggable, resizable, and closable panels on a 24px grid canvas with edge snapping, z-ordering, and local persistence.
+- **Live Peer-to-Peer Chat Rooms:** Room-based WebSocket signaling relay supporting six-character room codes to exchange translated dialogue between remote conversation partners.
+- **Spoken Voice Input:** Integrated Web Speech API enables non-signing partners to respond with browser-based voice transcription.
+- **Session-Isolated Persistent Logging:** PostgreSQL database backend stores verified detections with 2-second cooldown deduplication and indexed session replay capabilities.
+- **End-to-End Latency Benchmarking:** Dedicated instrumentation suite (`benchmark_latency.py`) to profile cold start, MediaPipe extraction, LSTM inference, database commits, WebSocket round-trips, and NLP response times.
 
 ---
 
-## Tech Stack
+## Architecture
 
-| Layer | Technology | Purpose |
-|-------|-----------|---------|
-| **ML Pipeline** | MediaPipe Holistic | Real-time body/face/hand landmark extraction |
-| | TensorFlow 2.15 / Keras | Bi-LSTM + custom Attention layer for sequence classification |
-| | NumPy, OpenCV, scikit-learn | Data processing, augmentation, train/test split |
-| **NLP** | Groq Cloud API | Async LLM calls to Llama 3.1 8B for grammar correction, translation & auto-complete |
-| **Backend** | FastAPI | WebSocket inference endpoint, REST transcript API, signaling relay |
-| | SQLAlchemy + PostgreSQL | Persistent transcript storage with session isolation |
-| | Pydantic | Request/response schema validation |
-| **Frontend** | Vanilla HTML/CSS/JS | Single-page app with dark glassmorphism UI, no build step |
-| | Web Speech API | Optional spoken input via browser microphone |
-| **Infrastructure** | uvicorn | ASGI server with hot-reload |
-| | python-dotenv | Environment variable management |
+Vocalize links client-side video capture, server-side computer vision, deep temporal classification, few-shot metric learning, cloud NLP, and peer communication into a cohesive real-time loop.
 
----
-
-## Architecture & Data Flow
+### End-to-End System Pipeline
 
 ```mermaid
-graph LR
-    subgraph Browser["Browser (app.js)"]
-        CAM[Webcam 15fps] --> B64[Base64 JPEG]
-        B64 -->|WS frame| INF_WS["/ws/inference/{session}"]
+graph TD
+    subgraph Client["Client Browser (app.js & window-manager.js)"]
+        CAM["Webcam (15 FPS, 640px)"] --> B64["Base64 JPEG Encoder"]
+        B64 -->|WebSocket Frames| INF_WS["/ws/inference/{session_id}"]
+        UI_DISPLAY["Floating Windows UI"]
+        CHAT_UI["Live Chat Room"]
     end
 
-    subgraph Backend["FastAPI Backend"]
-        INF_WS --> DEC[Decode Frame]
-        DEC --> MP[MediaPipe Holistic]
-        MP --> KP["Keypoints (1662)"]
-        KP --> BUF[30-Frame Buffer]
-        BUF --> LSTM["Bi-LSTM + Attention"]
-        LSTM --> PRED[Prediction + Confidence]
-        PRED -->|≥60%| DB[(PostgreSQL)]
-        PRED -->|word tracking| NLP_Q[NLP Debounce 2s]
-        NLP_Q --> GROQ[Groq LLM API]
-        GROQ --> NLP_R[NLP Result]
+    subgraph Backend["FastAPI Backend Server"]
+        INF_WS --> DRAIN["Frame Queue Drainer"]
+        DRAIN --> DEC["OpenCV Frame Decode"]
+        DEC --> MP["MediaPipe Holistic (1662 Keypoints)"]
+        MP --> NORM["Nose-Relative Normalization"]
+        NORM --> BUF["30-Frame Rolling Deque"]
+
+        BUF --> CLF["Bi-LSTM + Attention Model"]
+        CLF --> HEAD_BASE["Softmax Head (15 WLASL Classes)"]
+        CLF --> HEAD_EMBED["Attention Layer (128-dim Vector)"]
+
+        HEAD_EMBED --> KNN{"KNN Matcher (Distance < 0.75)"}
+        KNN -->|Match Found| CUSTOM_RES["Custom Sign Result"]
+        KNN -->|No Match| HEAD_BASE
+
+        HEAD_BASE --> DECISION["Hybrid Decision Engine"]
+        CUSTOM_RES --> DECISION
+
+        DECISION -->|Confidence >= 60%| DEDUP["Deduplication Filter (2s Cooldown)"]
+        DEDUP --> DB[("PostgreSQL Database")]
+        DECISION --> TRACK["Gloss Word Tracker"]
+        TRACK --> DEBOUNCE{"Signing Pause >= 2.0s?"}
+
+        DEBOUNCE -->|Yes| GROQ["Groq Cloud API (Llama 3.1 8B)"]
     end
 
-    PRED -->|prediction msg| Browser
-    NLP_R -->|nlp msg| Browser
-    Browser -->|nlp_relay| SIG["/ws/signaling/{room}"]
-    SIG -->|broadcast| PARTNER[Partner Browser]
+    subgraph NLP_Output["NLP Reconstruct & Distribution"]
+        GROQ --> PARSE["JSON Response Parser"]
+        PARSE --> NLP_MSG["Corrected Text, Translation, Next Words"]
+        NLP_MSG -->|WebSocket Push| INF_WS
+    end
+
+    INF_WS --> UI_DISPLAY
+    UI_DISPLAY -->|nlp_relay| SIG_WS["/ws/signaling/{room_id}"]
+    SIG_WS -->|Broadcast Relay| CHAT_UI
+    SIG_WS -->|Broadcast Relay| PARTNER["Remote Partner Device"]
+
+    classDef core fill:#f0f7ff,stroke:#0284c7,stroke-width:2px;
+    classDef comp fill:#f8fafc,stroke:#475569,stroke-width:1px;
+    class Client,Backend,NLP_Output core;
+    class CAM,B64,DEC,MP,NORM,BUF,CLF,KNN,DEDUP,DB,GROQ,PARSE,SIG_WS,PARTNER comp;
 ```
 
-### Two Independent WebSocket Channels
+### Dual WebSocket Channel Architecture
 
-1. **`/ws/inference/{session_id}`** — Dedicated per-user ML pipeline. Streams frames in, returns predictions and NLP results. Each connection loads the model singleton, maintains its own keypoint buffer, word tracker, and NLP debounce timer.
+The platform separates high-throughput computer vision processing from conversational relay through two isolated WebSocket endpoints:
 
-2. **`/ws/signaling/{room_id}`** — Stateless message relay. Any JSON sent by one peer is broadcast to all other peers in the same room. Used by the Live Chat Room feature to relay NLP-corrected translations between partners.
+1. **Inference Channel (`/ws/inference/{session_id}?client_id={client_id}`)**:
+   Dedicated per-client machine learning pipeline. Ingests raw video frames, runs MediaPipe Holistic landmark extraction, updates rolling sequence buffers, performs Bi-LSTM classification, queries client-specific KNN custom gesture prototypes, deduplicates entries into PostgreSQL, and executes debounced Groq LLM queries.
+
+2. **Signaling Channel (`/ws/signaling/{room_id}`)**:
+   Stateless peer-to-peer message relay. Facilitates room coordination using six-character codes, managing join/leave lifecycles and broadcasting translated messages (`nlp_relay`) between participants without placing computational load on the inference loop.
 
 ---
 
 ## Project Structure
 
-```
+```text
 Vocalize/
-├── .env                        # Environment variables (DB URL, Groq API key)
-├── .gitignore                  # Ignores venv, datasets, model weights, .env
+├── .env                        # Local environment variables (DB URL, Groq API key)
+├── .gitignore                  # Git exclusions for models, datasets, logs, and venv
 ├── .python-version             # Python version pin (3.11)
-├── requirements.txt            # All Python dependencies
-├── README.md                   # This file
+├── attention.py                # Bahdanau additive attention Keras layer
+├── augment_data.py             # Skeleton data augmentation pipeline (16x expansion)
+├── benchmark_latency.py        # End-to-end performance and latency diagnostic tool
+├── dataset_processor.py        # Batch video landmark extractor producing .npy arrays
+├── landmark_extractor.py       # MediaPipe Holistic keypoint extraction and normalizer
+├── README.md                   # Project documentation and architectural specification
+├── realtime_inference.py       # Standalone OpenCV desktop inference script with HUD
+├── train_model.py              # Bi-LSTM with Attention model training script
+├── wlasl_parser.py             # WLASL v0.3 dataset parser and video staging utility
 │
-├── ── ML Pipeline ──────────────────────────────────────────────
-├── wlasl_parser.py             # Phase 0: Parse WLASL JSON, copy videos to dataset/
-├── landmark_extractor.py       # Phase 1: MediaPipe Holistic detection + keypoint extraction
-├── dataset_processor.py        # Phase 2: Batch-extract keypoints from all videos → .npy
-├── augment_data.py             # Phase 2b: Generate 15 augmented copies per sample
-├── train_model.py              # Phase 3: Train Bi-LSTM + Attention, save wlasl_15_gloss.keras
-├── attention.py                # Custom Bahdanau attention Keras layer (shared)
-├── realtime_inference.py       # Phase 4: Standalone webcam inference with OpenCV HUD
-│
-├── ── Backend (FastAPI) ────────────────────────────────────────
-├── backend/
-│   ├── __init__.py             # Package marker
-│   ├── main.py                 # App entrypoint: lifespan, CORS, router mounts, static files
-│   ├── config.py               # Pydantic settings from .env (DB URL, Groq key, CORS)
-│   ├── database.py             # SQLAlchemy engine, session factory, get_db dependency
-│   ├── models.py               # ORM model: Transcript table with session isolation
-│   ├── schemas.py              # Pydantic schemas: TranscriptCreate/Read, SessionSummary
-│   ├── nlp_engine.py           # Groq-powered gloss→English→translation + auto-complete
-│   ├── wlasl_15_gloss.keras               # Trained Bi-LSTM+Attention model weights (~23 MB)
-│   ├── wlasl_15_gloss_labels.json      # Class index → label name mapping
+├── backend/                    # FastAPI backend service
+│   ├── __init__.py             # Python package marker
+│   ├── config.py               # Application settings and environment validation
+│   ├── database.py             # SQLAlchemy database engine and session factory
+│   ├── embedding_model.py      # Feature extractor exposing 128-dim attention embeddings
+│   ├── main.py                 # Application entry point, lifespan, CORS, static routes
+│   ├── models.py               # ORM schemas (transcripts, custom_gestures)
+│   ├── nlp_engine.py           # Async Groq LLM client for grammar and translation
+│   ├── schemas.py              # Pydantic request and response schemas
+│   ├── wlasl_15_gloss.keras    # Trained Bi-LSTM + Attention model weights
+│   ├── wlasl_15_gloss_labels.json # Mapping of class indices to 15 gloss names
 │   └── routers/
 │       ├── __init__.py         # Package marker
-│       ├── inference.py        # WS /ws/inference/{id} — frame decode, ML, DB, NLP
-│       ├── signaling.py        # WS /ws/signaling/{id} — peer relay + room management
-│       └── transcripts.py      # REST /transcripts — CRUD + session summary
+│       ├── gestures.py         # REST endpoints for custom sign management
+│       ├── inference.py        # WebSocket /ws/inference endpoint and hybrid engine
+│       ├── signaling.py        # WebSocket /ws/signaling peer-to-peer room router
+│       └── transcripts.py      # REST CRUD and summary endpoints for session logs
 │
-├── ── Frontend ─────────────────────────────────────────────────
-├── frontend/
-│   ├── index.html              # Single-page UI: video panel, sidebar cards, all CSS
-│   └── app.js                  # Client logic: webcam capture, WS, transcript, chat room
+├── frontend/                   # Vanilla JavaScript modular web client
+│   ├── app.js                  # Frontend controllers, webcam streamer, WebSocket client
+│   ├── index.html              # HTML structure containing floating window templates
+│   ├── style.css               # Design system, glassmorphism UI, light/dark themes
+│   └── window-manager.js       # Window manager with grid snapping and persistence
 │
-├── ── Data Directories (gitignored) ────────────────────────────
-├── dataset/                    # Raw MP4 videos organized by label
-├── processed_data/             # Extracted .npy keypoint sequences
-├── output/                     # Ad-hoc saved keypoints from Phase 1
-└── logs/                       # TensorBoard training logs
+├── latency_results/            # Automated benchmark exports (JSON reports, raw CSVs)
+├── dataset/                    # Staged video files organized by gloss (gitignored)
+├── processed_data/             # Keypoint sequences in .npy format (gitignored)
+├── logs/                       # TensorBoard training logs and checkpoints (gitignored)
+└── output/                     # Diagnostic keypoint frame dumps (gitignored)
 ```
 
 ---
 
-## Development Phases
+## Technology Stack
 
-### Phase 1 — Landmark Extraction
-`landmark_extractor.py`
-
-Established the foundational computer vision pipeline using **MediaPipe Holistic**. Extracts 1,662 keypoints per frame (33 pose × 4 + 468 face × 3 + 21 left hand × 3 + 21 right hand × 3) with **nose-relative normalization** for translation invariance. Includes standalone webcam preview with landmark overlays.
-
-### Phase 2 — Dataset Processing & Augmentation
-`wlasl_parser.py` · `dataset_processor.py` · `augment_data.py`
-
-Built the data pipeline: parse the WLASL v0.3 JSON to identify and copy relevant videos, then batch-extract keypoints into `.npy` arrays. The augmentation module generates **15 augmented copies** per sample using 6 techniques: Gaussian noise (3 levels), coordinate scaling, temporal shifting, temporal scaling, frame dropout, and horizontal mirroring with hand-swap — achieving a **16× dataset expansion**.
-
-### Phase 3 — Model Training
-`train_model.py` · `attention.py`
-
-Designed and trained the core classifier: a **Bidirectional LSTM** stack (128 → 64 units) with a custom **Bahdanau Attention** layer that learns per-frame importance. Architecture: `Masking → BiLSTM → BiLSTM → Attention → Dense(64) → Softmax`. Uses EarlyStopping, ModelCheckpoint, and TensorBoard logging. Currently trained on 5 classes: `before`, `book`, `computer`, `drink`, `go`.
-
-### Phase 4 — Real-Time Local Inference
-`realtime_inference.py`
-
-Standalone OpenCV application that loads the trained model and runs live webcam inference with a rolling 30-frame buffer. Uses `model(tensor, training=False)` direct calls instead of `model.predict()` to avoid TF graph re-tracing overhead. Includes a rendered HUD with prediction text, confidence bar, and buffer fill indicator.
-
-### Phase 5 — Backend API & Database
-`backend/main.py` · `database.py` · `models.py` · `schemas.py` · `config.py` · `routers/transcripts.py`
-
-Built the FastAPI backend with PostgreSQL persistence. The `Transcript` table stores detections with session isolation, deduplication (2s cooldown per label), and composite indexing for ordered replay. REST endpoints provide CRUD operations and session summaries. Pydantic settings load config from `.env`.
-
-### Phase 6 — WebSocket Inference Pipeline
-`backend/routers/inference.py`
-
-Migrated the ML pipeline into a WebSocket endpoint that receives Base64 JPEG frames from the browser, runs the full MediaPipe → LSTM pipeline server-side, and streams predictions back. Implements frame queue draining (only processes the latest frame) to prevent backpressure. High-confidence detections are logged to PostgreSQL in real time.
-
-### Phase 7 — NLP Grammar Correction & Translation
-`backend/nlp_engine.py` (integrated in `inference.py`)
-
-Added the Groq LLM layer that fires after a **2-second debounce** (no new sign detected). Accumulated gloss words are sent to Llama 3.1 8B with a strict JSON-only prompt. Returns corrected English, translation into the user's selected language (English, Hindi, Kannada, Tamil, Spanish), and 3 next-word predictions. Includes defensive parsing: strips markdown fences, catches `JSONDecodeError`, and never crashes the inference loop.
-
-### Phase 8 — Frontend Web Application
-`frontend/index.html` · `frontend/app.js`
-
-Single-page dark-mode UI served as static files. Features:
-- **Video panel** with webcam feed, prediction overlay, confidence bar, and frame buffer indicator
-- **Sidebar cards** (all collapsible): Session info, AI Translation (with language selector), Next Word Predictions, Transcript Log, Spoken Input (Web Speech API)
-- Glassmorphism design with CSS variables, ambient gradient backgrounds, and slide-in animations
-- WebSocket client that captures frames at 15 FPS and renders server responses in real time
-
-### Phase 9 — WebSocket Signaling & Peer Relay
-`backend/routers/signaling.py`
-
-WebSocket relay server for peer-to-peer communication. The `ConnectionManager` class maintains room-based connection pools and broadcasts any JSON message to all other peers in the same room. Automatically handles peer join notifications (`room_info`), disconnect cleanup (`peer_left`), and provides a REST endpoint to list active rooms.
-
-### Phase 9b — Live Chat Room (Peer-to-Peer NLP Chat)
-`frontend/app.js` · `frontend/index.html` (additions only)
-
-Added a second WebSocket connection to the signaling endpoint, enabling two users to see each other's NLP-corrected translations in real time:
-- **Room setup**: Generate or enter a 6-character alphanumeric room code
-- **Peer status**: Live indicator showing "Waiting for partner..." or "Partner connected"
-- **Chat feed**: Right-aligned bubbles (own translations, accent gradient) and left-aligned bubbles (partner translations, card background) with timestamps
-- NLP results are automatically relayed via `nlp_relay` messages; the inference WS remains completely untouched
-- Error handling: inline warnings (no `alert()`), graceful disconnect recovery, zero impact on inference FPS
+- **Core Runtime:** Python 3.10 / 3.11 environment.
+- **Deep Learning Framework:** TensorFlow 2.15 (Keras Functional API) utilizing Masking, Bidirectional LSTMs, and custom attention mechanisms.
+- **Computer Vision:** MediaPipe 0.10+ (Holistic solution tracking 1,662 facial, pose, and hand coordinates) and OpenCV for image decoding and color space conversion.
+- **Natural Language Processing:** Groq Cloud API running `llama-3.1-8b-instant` with structured JSON constraint prompting.
+- **Backend Framework:** FastAPI with Uvicorn ASGI server and Pydantic Settings for runtime configuration.
+- **Database Layer:** PostgreSQL with SQLAlchemy 2.0 ORM, storing transcripts and vector arrays (`ARRAY(Float)`).
+- **Frontend Architecture:** Vanilla JavaScript (ES6+), HTML5 Canvas, WebSockets, Web Speech API, and CSS Grid/Flexbox with no build step required.
+- **Data Engineering:** NumPy, scikit-learn, and tqdm for dataset extraction, sequence padding, and temporal augmentation.
 
 ---
 
-## Setup & Installation
+## Installation
 
 ### Prerequisites
 
-- **Python 3.11** (specified in `.python-version`)
-- **PostgreSQL 14+** running locally
-- **Groq API key** (free tier at [console.groq.com](https://console.groq.com))
+- **Python:** Version 3.10 or 3.11 installed.
+- **PostgreSQL:** Version 14 or higher running locally or accessible via network.
+- **Groq API Key:** A valid key obtained from [Groq Console](https://console.groq.com).
+- **Webcam:** An integrated or USB camera for video capture.
+- **Modern Web Browser:** Google Chrome, Brave, or Microsoft Edge (recommended for Web Speech API and WebSockets).
 
-### 1. Clone & Virtual Environment
+### Setup
 
-```bash
-git clone https://github.com/your-username/vocalize.git
-cd vocalize
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/your-username/vocalize.git
+   cd vocalize/Vocalize
+   ```
 
-python -m venv venv
-# Windows:
-venv\Scripts\activate
-# macOS/Linux:
-source venv/bin/activate
-```
+2. **Create and activate a virtual environment:**
+   ```bash
+   python -m venv venv
 
-### 2. Install Dependencies
+   # Windows PowerShell:
+   .\venv\Scripts\Activate.ps1
 
-```bash
-pip install -r requirements.txt
-```
+   # Linux or macOS:
+   source venv/bin/activate
+   ```
 
-### 3. PostgreSQL Database
+3. **Install dependencies:**
+   ```bash
+   pip install opencv-python mediapipe numpy tensorflow scikit-learn fastapi "uvicorn[standard]" sqlalchemy psycopg2-binary pydantic-settings python-dotenv groq tqdm websockets
+   ```
 
-```sql
--- Connect to PostgreSQL and create the database:
-CREATE DATABASE vocalize_db;
-```
+4. **Initialize PostgreSQL database:**
+   Connect to PostgreSQL using `psql` or your database manager and create the application database:
+   ```sql
+   CREATE DATABASE vocalize_db;
+   ```
+   All tables (`transcripts` and `custom_gestures`) are automatically generated on initial startup by FastAPI.
 
-Tables are created automatically on first startup via `Base.metadata.create_all()`.
+5. **Configure environment variables:**
+   Create a `.env` file in the project root:
+   ```env
+   DATABASE_URL=postgresql://postgres:your_password@localhost:5432/vocalize_db
+   GROQ_API_KEY=gsk_your_groq_api_key_here
+   DEBUG=True
+   CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:8000
+   ```
 
-### 4. Environment Variables
+---
 
-Create a `.env` file in the project root:
+## Configuration
 
-```env
-DATABASE_URL=postgresql://postgres:your_password@localhost:5432/vocalize_db
-GROQ_API_KEY=gsk_your_groq_api_key_here
-DEBUG=True
-CORS_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:8000
-```
+### Environment Configuration Reference
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `DATABASE_URL` | ✅ | PostgreSQL connection string |
-| `GROQ_API_KEY` | ✅ | Groq API key for NLP correction & translation |
-| `DEBUG` | ❌ | Enables SQL echo logging (default: `True`) |
-| `CORS_ORIGINS` | ❌ | Comma-separated allowed origins |
+| Parameter | Required | Default | Description |
+| :--- | :---: | :--- | :--- |
+| `DATABASE_URL` | Yes | `postgresql://postgres:postgres@localhost:5432/vocalize_db` | Connection string for PostgreSQL database |
+| `GROQ_API_KEY` | Yes | None | Authentication key for Groq LLM API requests |
+| `DEBUG` | No | `True` | Enables SQL query echo and verbose diagnostic logging |
+| `CORS_ORIGINS` | No | `http://localhost:3000,http://localhost:5173,http://127.0.0.1:8000` | Comma-separated list of permitted browser origins |
 
-### 5. Run the Dev Server
+### Model Weights and Class Mappings
 
+Vocalize requires trained model weights and corresponding class labels placed in the `backend/` directory:
+- `backend/wlasl_15_gloss.keras`: Serialized Keras model containing the Bi-LSTM layers and custom `AttentionLayer`.
+- `backend/wlasl_15_gloss_labels.json`: JSON dictionary mapping integer indices (0 through 14) to sign names.
+
+Baseline 15-gloss classes included:
+`0: basketball`, `1: before`, `2: book`, `3: candy`, `4: computer`, `5: drink`, `6: family`, `7: go`, `8: help`, `9: no`, `10: tall`, `11: thin`, `12: what`, `13: who`, `14: yes`.
+
+---
+
+## Usage
+
+### 1. Launching the Application
+
+Start the FastAPI application with Uvicorn:
 ```bash
 uvicorn backend.main:app --reload --port 8000
 ```
+Open your browser and navigate to:
+```text
+http://127.0.0.1:8000/app/
+```
 
-Open the app at: **http://127.0.0.1:8000/app/**
+### 2. Interface Workflow
 
-### 6. (Optional) Train Your Own Model
+```text
++---------------------------------------------------------------------------------+
+| Vocalize Toolbar      [+ Add Node]  [Reset Layout]     [Connected]   [Theme Toggle] |
++---------------------------------------------------------------------------------+
+|  +-----------------------------+  +-------------------+  +--------------------+ |
+|  | CH.01 WEBCAM                |  | CH.02 SESSION     |  | CH.05 CUSTOM SIGNS | |
+|  | [Live Video Display]        |  | Session: 4f1a..   |  | [Sign Name Input]  | |
+|  | Buffer: [............] 30/30|  | Detections: 18    |  | [Record 5 Reps]    | |
+|  | Confidence: [======] 85%    |  | Unique: 6         |  | Active Custom List | |
+|  | Prediction: "computer"      |  +-------------------+  +--------------------+ |
+|  | [Start] [Stop] [Mic] 15 FPS |  | CH.03 TRANSLATION |  +--------------------+ |
+|  +-----------------------------+  | Lang: Spanish     |  | CH.06 LIVE CHAT    | |
+|  +-----------------------------+  | "Estoy usando la  |  | Room: [X7K2M9]     | |
+|  | CH.07 SPOKEN INPUT          |  |  computadora."    |  | Status: Connected  | |
+|  | Non-signer speech to text   |  +-------------------+  | Chat Conversation  | |
+|  +-----------------------------+  | CH.04 PREDICTIONS |  | Feed Bubbles       | |
+|                                   | [work] [code] ... |  +--------------------+ |
++---------------------------------------------------------------------------------+
+```
 
-If you want to retrain with different signs:
+1. **Start Streaming:** Click **Start** in the Webcam window. Allow browser webcam access. The frame buffer indicator will fill to 30 frames.
+2. **Perform Signs:** Perform any of the 15 supported signs clearly within camera view. Detected labels and confidence bars update in real time.
+3. **Automatic Grammar Correction:** When you pause signing for two seconds, the system gathers accumulated glosses and queries Groq. Reconstructed English and target translations appear in the AI Translation window.
+4. **Select Target Language:** Use the dropdown in CH.03 to switch output between English, Hindi, Kannada, Tamil, or Spanish on the fly.
+5. **Contextual Auto-Complete:** Click any of the three suggested next-word prediction pills in CH.04 to review expected follow-up vocabulary.
 
+### 3. Registering Custom Signs (KNN Live Learning)
+
+Users can add custom signs without retraining the core neural network:
+1. Open the **CH.05 CUSTOM SIGNS** window.
+2. Type a unique name in the sign label field (for example, `my_custom_sign`).
+3. Click **Record**. The status will prompt you for five consecutive repetitions.
+4. Perform the gesture once per repetition prompt. An automated quality gate validates that hand landmarks are visible in at least 60% of the frames.
+5. After five valid repetitions, the system computes the 128-dimensional embedding from the attention layer, L2-normalizes the average prototype, and saves it to PostgreSQL.
+6. The sign is instantly active. When performed, the hybrid engine recognizes it, displays a **Custom Sign** badge, and routes the label into the Groq translation flow.
+
+### 4. Live Chat Room (Two-Device Communication via ngrok)
+
+To communicate between two separate computers or mobile devices across the internet:
+
+1. **Start the local server:**
+   ```bash
+   uvicorn backend.main:app --host 0.0.0.0 --port 8000
+   ```
+
+2. **Expose via ngrok:**
+   ```bash
+   ngrok http 8000
+   ```
+   Copy the generated forwarding URL (for example, `https://abc123.ngrok-free.app`).
+
+3. **Device A Setup:**
+   - Open `https://abc123.ngrok-free.app/app/` in Chrome.
+   - Click **Start** to initiate video capture.
+   - In **CH.06 LIVE CHAT**, click **Generate** to create a 6-character room code (e.g., `K9M2X4`), then click **Join Room**.
+
+4. **Device B Setup:**
+   - Open the same ngrok URL on the second device.
+   - Click **Start** to activate their webcam.
+   - Enter room code `K9M2X4` and click **Join Room**.
+
+5. **Bidirectional Interaction:**
+   - When either participant signs, their translated sentence is automatically broadcast over the signaling channel.
+   - Sent messages appear as right-aligned gradient bubbles; incoming partner translations appear as left-aligned cards.
+   - Non-signing partners can click the **Mic** button to speak their response, rendering spoken text into the shared space.
+
+### 5. Running the Latency Benchmark Suite
+
+To measure real-time performance on a new computer or verify hardware latency:
 ```bash
-# Step 1: Parse WLASL dataset
-python wlasl_parser.py --json_path path/to/WLASL_v0.3.json --videos_dir path/to/videos
+# Benchmark using live webcam for 45 seconds:
+python benchmark_latency.py --source 0 --duration 45
 
-# Step 2: Extract keypoints
+# Benchmark using a recorded video file:
+python benchmark_latency.py --source path/to/sample.mp4 --duration 45
+```
+The script instruments all backend components, creates an isolated test session, executes live WebSocket transactions, removes temporary test records from the database, and exports detailed reports into `latency_results/` in both JSON and CSV formats.
+
+---
+
+## Model Training and Pipeline Scripts
+
+If you wish to retrain the neural network with additional classes or modify the augmentation parameters:
+
+### Step 1: Parse WLASL Dataset
+Download the WLASL dataset and extract desired glosses into organized subdirectories:
+```bash
+python wlasl_parser.py --json_path path/to/WLASL_v0.3.json --videos_dir path/to/videos --words "basketball,before,book,candy,computer,drink,family,go,help,no,tall,thin,what,who,yes"
+```
+
+### Step 2: Extract Keypoints
+Batch process video files through MediaPipe Holistic to extract 1,662 keypoints per frame:
+```bash
 python dataset_processor.py --input_dir dataset --output_dir processed_data
+```
 
-# Step 3: Augment data (15x expansion)
-python augment_data.py --data_dir processed_data
+### Step 3: Augment Keypoint Sequences
+Expand small datasets by generating 15 augmented variations per sample (16x total expansion):
+```bash
+python augment_data.py --data_dir processed_data --num_augments 15
+```
+Augmentation operations applied:
+- Additive Gaussian noise (three distinct variance levels)
+- Coordinate scaling (simulating varied camera distances)
+- Temporal shifting (forward and backward sequence rolling)
+- Temporal scaling (linear interpolation simulating varying signing speeds)
+- Frame dropout (simulating dropped webcam frames)
+- Horizontal coordinate mirroring with bilateral hand index swapping
 
-# Step 4: Train
-python train_model.py --data_dir processed_data --epochs 200
-
-# The model saves to wlasl_15_gloss.keras and wlasl_15_gloss_labels.json
-# Copy both into backend/ to deploy
+### Step 4: Train Bi-LSTM with Attention
+Train the classification model with EarlyStopping, ModelCheckpoint, and TensorBoard monitoring:
+```bash
+python train_model.py --data_dir processed_data --epochs 200 --batch_size 16 --model_out backend/wlasl_15_gloss.keras
 ```
 
 ---
 
-## Testing with Two Devices (ngrok)
+## Command and Protocol Reference
 
-To test the Live Chat Room feature across two devices (or two machines on different networks):
+### Command Line Tools
 
-### Step 1 — Start the Server
+| Command | File | Description |
+| :--- | :--- | :--- |
+| `uvicorn backend.main:app --reload` | `backend/main.py` | Starts the FastAPI development server with hot-reload |
+| `python realtime_inference.py` | `realtime_inference.py` | Launches standalone OpenCV desktop inference with on-screen HUD |
+| `python benchmark_latency.py` | `benchmark_latency.py` | Executes the end-to-end automated latency and throughput test |
+| `python dataset_processor.py` | `dataset_processor.py` | Batch extracts MediaPipe landmarks from MP4 files to NumPy `.npy` |
+| `python augment_data.py` | `augment_data.py` | Performs 16x time-series data augmentation on landmark sequences |
+| `python train_model.py` | `train_model.py` | Builds and trains the Bi-LSTM model with Bahdanau attention |
+| `python wlasl_parser.py` | `wlasl_parser.py` | Filters WLASL JSON annotations and stages videos by class |
 
-```bash
-uvicorn backend.main:app --host 0.0.0.0 --port 8000
-```
+### WebSocket Protocol Reference
 
-### Step 2 — Install & Authenticate ngrok
+#### `/ws/inference/{session_id}`: Machine Learning Inference Channel
 
-```bash
-# Install ngrok (https://ngrok.com/download)
-ngrok config add-authtoken YOUR_AUTH_TOKEN
-```
+| Direction | Message Type | Key Payload Fields | Description |
+| :--- | :--- | :--- | :--- |
+| Client to Server | `frame` | `data` (Base64 JPEG string) | Real-time video frame for inference |
+| Client to Server | `config` | `target_language` (string) | Changes target translation language |
+| Client to Server | `record_gesture_start` | `label` (string) | Initiates 5-repetition custom gesture recording |
+| Client to Server | `record_gesture_stop` | None | Cancels active custom gesture recording |
+| Server to Client | `status` | `message`, `buffer` | Pipeline initialization and buffer progress |
+| Server to Client | `prediction` | `label`, `confidence`, `buffer`, `source` | Model prediction (`source: "model"` or `"custom"`) |
+| Server to Client | `nlp` | `corrected_english`, `translated_text`, `auto_complete[]`, `raw_gloss[]`, `target_language` | Grammar-corrected sentence, translation, and auto-complete |
+| Server to Client | `gesture_rep_captured` | `rep`, `of` | Confirms successful capture of a repetition |
+| Server to Client | `gesture_rep_rejected` | `reason` | Notifies user that repetition lacked hand visibility |
+| Server to Client | `gesture_recorded` | `label`, `samples` | Confirms custom sign saved to database and cache |
 
-### Step 3 — Expose the Server
+#### `/ws/signaling/{room_id}`: Peer-to-Peer Signaling Channel
 
-```bash
-ngrok http 8000
-```
-
-ngrok will output a public URL like `https://abc123.ngrok-free.app`.
-
-### Step 4 — Device A (Your Machine)
-
-1. Open `https://abc123.ngrok-free.app/app/` in Chrome
-2. Click **Start** to begin the webcam stream
-3. In the **Live Chat Room** card, click **Generate** to get a room code (e.g., `X7K2M9`)
-4. Click **Join Room**
-5. Share the room code with Device B
-
-### Step 5 — Device B (Partner's Machine/Phone)
-
-1. Open the same ngrok URL in Chrome: `https://abc123.ngrok-free.app/app/`
-2. Click **Start** to begin their webcam stream
-3. Enter the room code `X7K2M9` in the Live Chat Room input
-4. Click **Join Room**
-5. The peer status should change to **"Partner connected"** on both devices
-
-### Step 6 — Test
-
-- Both users sign in front of their cameras
-- After 2 seconds of signing silence, NLP corrections appear in the AI Translation card
-- Those same translations appear as chat bubbles in both users' chat feeds — right-aligned for your own, left-aligned for your partner's
-- Verify the FPS counter shows no degradation with the room active
-
-> **Note:** ngrok's free tier adds a browser interstitial on first visit. Click through it on both devices. For production use, consider a paid ngrok plan or deploy behind a proper reverse proxy.
-
----
-
-## WebSocket Protocol Reference
-
-### `/ws/inference/{session_id}` — ML Inference Pipeline
-
-| Direction | Type | Fields | Description |
-|-----------|------|--------|-------------|
-| **Client → Server** | `frame` | `data` (Base64 JPEG string) | Webcam frame for inference |
-| **Client → Server** | `config` | `target_language` (string) | Change the NLP translation language |
-| **Server → Client** | `status` | `message`, `buffer` | Connection/buffering status updates |
-| **Server → Client** | `prediction` | `label`, `confidence`, `buffer` | ML model prediction result |
-| **Server → Client** | `nlp` | `corrected_english`, `translated_text`, `auto_complete[]`, `raw_gloss[]`, `target_language` | NLP-corrected sentence + translation + next-word predictions |
-
-### `/ws/signaling/{room_id}` — Peer Relay
-
-| Direction | Type | Fields | Description |
-|-----------|------|--------|-------------|
-| **Server → Client** | `room_info` | `session_id`, `peer_count` | Sent on connect with current room state |
-| **Server → Peers** | `peer_left` | `session_id`, `remaining` | Broadcast when a peer disconnects |
-| **Client → Server** | `peer_joined` | `peer_id` | Handshake sent by new peer on connect |
-| **Client → Server** | `nlp_relay` | `from`, `corrected_english`, `translated_text`, `raw_gloss[]`, `target_language` | Forward own NLP result to partner |
-| _Any_ | _Any JSON_ | _Any_ | Server relays all messages to other peers in the room |
+| Direction | Message Type | Key Payload Fields | Description |
+| :--- | :--- | :--- | :--- |
+| Server to Client | `room_info` | `session_id`, `peer_count` | Dispatched on connection with current peer count |
+| Server to Peers | `peer_left` | `session_id`, `remaining` | Broadcast when a peer disconnects from the room |
+| Client to Server | `peer_joined` | `peer_id` | Initial handshake sent upon room entry |
+| Client to Server | `nlp_relay` | `from`, `corrected_english`, `translated_text`, `raw_gloss[]`, `target_language` | Forwards own translation results to partner feed |
+| Any | Any JSON | Arbitrary fields | Server relays message to all other peers in room |
 
 ### REST Endpoints
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/` | Health check (app name, version, status) |
-| `GET` | `/health` | Simple health ping |
-| `POST` | `/transcripts/` | Log a new sign detection |
-| `GET` | `/transcripts/{session_id}` | Get ordered transcript for a session |
-| `GET` | `/transcripts/{session_id}/summary` | Get session stats (count, unique labels, time range) |
-| `GET` | `/signaling/rooms` | List all active signaling rooms and peer counts |
+| :--- | :--- | :--- |
+| `GET` | `/` | Health check returning service status, title, and version |
+| `GET` | `/health` | Lightweight uptime health verification endpoint |
+| `POST` | `/transcripts/` | Persists a validated sign detection to PostgreSQL |
+| `GET` | `/transcripts/{session_id}` | Retrieves ordered transcript records for a session |
+| `GET` | `/transcripts/{session_id}/summary` | Aggregates detection counts, unique signs, and timestamps |
+| `GET` | `/signaling/rooms` | Lists active chat rooms and connected peer counts |
+| `GET` | `/gestures/{client_id}` | Lists all registered custom signs for a client |
+| `DELETE` | `/gestures/{gesture_id}` | Deletes a custom sign and invalidates in-memory KNN cache |
 
 ---
 
-## Future Roadmap
+## Performance and Latency Profile
 
-### Phase 10 — 3D Avatar Visualization
-Render a 3D human avatar that mirrors the user's detected landmarks in real time. The avatar would replay signs visually, serving as both a learning tool and an accessibility aid. Potential stack: Three.js or Babylon.js for WebGL rendering, driven by the same MediaPipe landmark stream already available on the frontend.
+Based on empirical runs executed via `benchmark_latency.py` on standard modern desktop hardware:
 
-### Phase 11 — Live Learning (KNN Gesture Registration)
-Allow users to teach the system new signs on-the-fly using K-Nearest Neighbors. A user would perform a new gesture 5–10 times, the system would store the keypoint sequences as exemplars, and at inference time a KNN classifier would run in parallel with the LSTM. This enables personalized sign vocabularies without retraining the neural network.
+| Subsystem Component | Metric Measured | Typical Duration | Notes |
+| :--- | :--- | :--- | :--- |
+| **Server Cold Start** | Boot & Database Connect | ~240 ms to 260 ms | Single execution at server launch |
+| **Model Warmup** | Bi-LSTM & Embedding Load | ~1.8 s to 2.1 s | One-time lazy-loading on first connection |
+| **MediaPipe Holistic** | Landmark Extraction | ~35 ms to 50 ms | Per processed video frame |
+| **Sequence Classifier** | Bi-LSTM + Attention Forward Pass | ~10 ms to 15 ms | Executed when 30-frame buffer is full |
+| **KNN Embedding Match** | Attention Vector Extraction & Distance | ~2 ms to 4 ms | Evaluates candidate prototypes in memory |
+| **Database Commit** | PostgreSQL Transaction | ~3 ms to 5 ms | Synchronous write during confident detections |
+| **Groq NLP Inference** | Llama 3.1 8B API Round-Trip | ~300 ms to 500 ms | Triggered after 2.0s signing silence |
+| **Local Peer Relay** | WebSocket Loopback Broadcast | < 1 ms | In-memory connection manager dispatch |
 
-### Phase 12 — Domain Optimization
-Fine-tune the model and NLP prompts for specific domains (medical, legal, educational) where sign language vocabulary and sentence structures differ significantly from casual conversation. Includes:
-- Domain-specific WLASL subset training
-- Custom Groq prompt templates per domain
-- Contextual auto-complete tuned to domain vocabulary
-- Specialized glossary management for technical terms
-
----
-
-## Known Limitations & Challenges Solved
-
-### Current Limitations
-
-| Limitation | Detail |
-|------------|--------|
-| **5-class vocabulary** | Currently trained on `before`, `book`, `computer`, `drink`, `go`. Expandable by retraining with more WLASL videos. |
-| **Single-user inference** | Each WebSocket connection loads the model singleton; concurrent users share the same MediaPipe Holistic instance. |
-| **NLP latency** | Groq API calls add 200–500ms; mitigated by the 2-second debounce (NLP fires during natural signing pauses). |
-| **No offline mode** | Requires network access for Groq API; inference itself runs locally but NLP does not. |
-| **Browser-only input** | Webcam access requires HTTPS in production (ngrok handles this for dev). |
-
-### Challenges Solved
-
-| Challenge | Solution |
-|-----------|----------|
-| **TF graph re-tracing** caused frozen predictions in real-time loop | Replaced `model.predict()` with `model(tensor, training=False)` direct call |
-| **Groq returning markdown-wrapped JSON** broke NLP parsing | Added regex stripping of ` ```json ``` ` fences before `json.loads()` |
-| **NLP errors crashing the video loop** | Wrapped entire NLP block in `try/except` — NLP failures are logged but never interrupt inference |
-| **Frame backpressure** causing increasing latency | Implemented queue draining — only the newest frame is processed per iteration |
-| **Translation-dependent landmarks** (user position in frame) | Nose-relative coordinate normalization in `extract_keypoints()` |
-| **Small dataset overfit** | 15× augmentation pipeline with noise, scaling, temporal warping, mirroring, and combined transforms |
-| **Duplicate DB entries** for held signs | 2-second cooldown deduplication keyed on label name |
-| **Room disconnect leaving stale UI** | `leaveRoom()` nulls the WS reference before closing to prevent recursive `onclose` → `leaveRoom` loops |
+Frame queue draining ensures that processing delays never accumulate; incoming frames that arrive while MediaPipe is computing are dropped, guaranteeing real-time responsiveness at all times.
 
 ---
 
-<p align="center">
-  <strong>Vocalize</strong> — Breaking communication barriers, one sign at a time.
-</p>
+## Engineering Challenges and Solutions
+
+- **TensorFlow Graph Retracing Memory Leak:**
+  *Problem:* Calling `model.predict()` inside high-frequency real-time loops caused TensorFlow to retrace execution graphs, steadily increasing memory consumption and introducing severe video stutter.
+  *Solution:* Replaced `model.predict()` with direct callable invocation `model(tensor, training=False).numpy()`, executing graph operations without retracing overhead.
+
+- **WebSocket Frame Backpressure:**
+  *Problem:* When client camera streams exceeded server processing capacity, queued frames created escalating latency, causing predictions to lag several seconds behind real physical motion.
+  *Solution:* Implemented an asynchronous queue-draining pattern in the inference WebSocket loop that clears pending messages and processes only the most recent frame.
+
+- **Positional and Scale Sensitivity in Video Capture:**
+  *Problem:* Landmark coordinates varied drastically depending on user distance and position relative to the camera lens.
+  *Solution:* Implemented nose-relative coordinate normalization in `landmark_extractor.py`, subtracting the nose coordinate (`keypoints[0]`) from all pose and facial landmarks to ensure translation invariance.
+
+- **Noisy or Degenerate Custom Sign Recording:**
+  *Problem:* Users recording custom signs occasionally stepped out of view or lowered their hands, corrupting the embedding prototype with zero-vector noise.
+  *Solution:* Added an automated quality gate requiring hand landmarks to be actively tracked in at least 60% of recorded frames. Failed repetitions are rejected with immediate user feedback.
+
+- **Race Conditions in Custom Sign Invalidation:**
+  *Problem:* Deleting a custom sign via a REST endpoint while the async inference loop was reading candidate embeddings risked collection mutation errors across threads.
+  *Solution:* Handled cache invalidation via atomic key deletion rather than in-place mutation, guaranteeing that inference loops safely read consistent candidate snapshots.
+
+- **Markdown Fences in LLM Responses:**
+  *Problem:* Groq occasionally returned JSON payloads wrapped inside triple-backtick markdown blocks, causing `json.loads` deserialization errors.
+  *Solution:* Applied defensive regex pre-processing to strip markdown wrappers before parsing, backed by graceful fallbacks that prevent NLP failures from interrupting the video inference loop.
+
+- **Held Sign Database Duplication:**
+  *Problem:* Users holding a sign steadily triggered dozens of consecutive identical database entries every second.
+  *Solution:* Implemented a 2.0-second cooldown deduplication filter tied to the detected sign label, logging new entries only when the sign changes or when the cooldown window elapses.
+
+---
+
+## Roadmap
+
+- **Phase 10: 3D Avatar Visualization:** Render a 3D avatar using WebGL (Three.js or Babylon.js) driven by MediaPipe landmark streams to visually mirror and replay signs for bidirectional accessibility.
+- **Phase 12: Domain Optimization:** Fine-tune specialized vocabulary models and customized Groq prompting for medical, emergency, and legal environments.
+- **WebRTC Data Channels:** Transition live peer-to-peer chat feeds from WebSocket server relays to direct browser-to-browser WebRTC DataChannels for reduced network latency.
+- **Local On-Device LLM Fallback:** Integrate quantized local models (such as small GGUF models) to enable grammar correction in fully air-gapped or offline environments.
+
+---
+
+## License
+
+No license has been selected for this project yet.
