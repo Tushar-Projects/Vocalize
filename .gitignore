@@ -79,3 +79,6 @@ Thumbs.db
 
 # ruff
 .ruff_cache
+
+# latency results
+latency_results/
