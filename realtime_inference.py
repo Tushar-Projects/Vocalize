@@ -1,14 +1,14 @@
 """
 Vocalize — Phase 4: Real-Time Webcam Inference
 
-Loads the trained LSTM model (action.h5) and runs live sign-language
+Loads the trained LSTM model (wlasl_15_gloss.keras) and runs live sign-language
 prediction using a rolling 30-frame window.  Predictions are overlaid
 on the video feed only when confidence exceeds a configurable threshold.
 
 Usage
 ─────
     python realtime_inference.py
-    python realtime_inference.py --model action.h5 --threshold 0.65
+    python realtime_inference.py --model wlasl_15_gloss.keras --threshold 0.65
     python realtime_inference.py --debug          # enable diagnostic logging
 
 Controls
@@ -51,8 +51,8 @@ def load_model_and_labels(
     Load the Keras model and the label index map.
 
     Args:
-        model_path:  Path to action.h5.
-        labels_path: Path to action_labels.json.
+        model_path:  Path to wlasl_15_gloss.keras.
+        labels_path: Path to wlasl_15_gloss_labels.json.
 
     Returns:
         (model, label_map) where label_map is {int: str}.
@@ -304,8 +304,8 @@ def main():
         description="Vocalize Phase 4 — Real-time sign language inference",
     )
     parser.add_argument(
-        "--model", type=str, default="action.h5",
-        help="Path to trained Keras model (default: action.h5)",
+        "--model", type=str, default="wlasl_15_gloss.keras",
+        help="Path to trained Keras model (default: wlasl_15_gloss.keras)",
     )
     parser.add_argument(
         "--labels", type=str, default=None,

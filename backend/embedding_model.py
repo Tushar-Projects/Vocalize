@@ -44,7 +44,7 @@ def build_embedding_model(classifier: tf.keras.Model) -> tf.keras.Model:
     already-trained graph.
 
     Args:
-        classifier: The loaded Bi-LSTM+Attention model (action.h5).
+        classifier: The loaded Bi-LSTM+Attention model (wlasl_15_gloss.keras).
 
     Returns:
         A Keras Model with the same input, producing a (batch, D)
