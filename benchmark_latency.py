@@ -15,8 +15,8 @@ Requirements beyond requirements.txt:
     pip install websockets
 
 The model files must be at:
-    backend/action.h5
-    backend/action_labels.json
+    backend/wlasl_15_gloss.keras
+    backend/wlasl_15_gloss_labels.json
 
 A running PostgreSQL database is required. GROQ_API_KEY is required to measure
 actual Groq NLP latency. The script does not measure browser Web Speech API
@@ -736,8 +736,8 @@ def export_metrics(args: argparse.Namespace, session_id: str) -> tuple[Path, Pat
         },
         "tensorflow_detected_gpu_devices": gpu_devices,
         "project_root": str(PROJECT_ROOT),
-        "model_path": str(PROJECT_ROOT / "backend" / "action.h5"),
-        "labels_path": str(PROJECT_ROOT / "backend" / "action_labels.json"),
+        "model_path": str(PROJECT_ROOT / "backend" / "wlasl_15_gloss.keras"),
+        "labels_path": str(PROJECT_ROOT / "backend" / "wlasl_15_gloss_labels.json"),
         "parameters": vars(args),
         "summary": summary,
         "raw_samples_ms": raw_samples,
@@ -777,8 +777,8 @@ def main() -> int:
         print("[ERROR] FPS and duration must be positive; tail cannot be negative.")
         return 2
 
-    model_path = PROJECT_ROOT / "backend" / "action.h5"
-    labels_path = PROJECT_ROOT / "backend" / "action_labels.json"
+    model_path = PROJECT_ROOT / "backend" / "wlasl_15_gloss.keras"
+    labels_path = PROJECT_ROOT / "backend" / "wlasl_15_gloss_labels.json"
     missing = [str(path) for path in (model_path, labels_path) if not path.is_file()]
     if missing:
         print("[ERROR] Required model files are missing:")

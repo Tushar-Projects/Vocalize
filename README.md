@@ -141,7 +141,7 @@ Vocalize/
 ├── landmark_extractor.py       # Phase 1: MediaPipe Holistic detection + keypoint extraction
 ├── dataset_processor.py        # Phase 2: Batch-extract keypoints from all videos → .npy
 ├── augment_data.py             # Phase 2b: Generate 15 augmented copies per sample
-├── train_model.py              # Phase 3: Train Bi-LSTM + Attention, save action.h5
+├── train_model.py              # Phase 3: Train Bi-LSTM + Attention, save wlasl_15_gloss.keras
 ├── attention.py                # Custom Bahdanau attention Keras layer (shared)
 ├── realtime_inference.py       # Phase 4: Standalone webcam inference with OpenCV HUD
 │
@@ -154,8 +154,8 @@ Vocalize/
 │   ├── models.py               # ORM model: Transcript table with session isolation
 │   ├── schemas.py              # Pydantic schemas: TranscriptCreate/Read, SessionSummary
 │   ├── nlp_engine.py           # Groq-powered gloss→English→translation + auto-complete
-│   ├── action.h5               # Trained Bi-LSTM+Attention model weights (~23 MB)
-│   ├── action_labels.json      # Class index → label name mapping
+│   ├── wlasl_15_gloss.keras               # Trained Bi-LSTM+Attention model weights (~23 MB)
+│   ├── wlasl_15_gloss_labels.json      # Class index → label name mapping
 │   └── routers/
 │       ├── __init__.py         # Package marker
 │       ├── inference.py        # WS /ws/inference/{id} — frame decode, ML, DB, NLP
@@ -318,7 +318,7 @@ python augment_data.py --data_dir processed_data
 # Step 4: Train
 python train_model.py --data_dir processed_data --epochs 200
 
-# The model saves to action.h5 and action_labels.json
+# The model saves to wlasl_15_gloss.keras and wlasl_15_gloss_labels.json
 # Copy both into backend/ to deploy
 ```
 

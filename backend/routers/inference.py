@@ -64,8 +64,8 @@ HAND_KP_START     = 1536  # index where hand keypoints begin (pose=132 + face=14
 # ──────────────────────────────────────────────
 # Model singleton (loaded once at import time)
 # ──────────────────────────────────────────────
-MODEL_PATH  = str(Path(__file__).resolve().parent.parent / "action.h5")
-LABELS_PATH = str(Path(__file__).resolve().parent.parent / "action_labels.json")
+MODEL_PATH  = str(Path(__file__).resolve().parent.parent / "wlasl_15_gloss.keras")
+LABELS_PATH = str(Path(__file__).resolve().parent.parent / "wlasl_15_gloss_labels.json")
 
 _model = None
 _label_map = None

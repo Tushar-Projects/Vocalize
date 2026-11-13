@@ -3,7 +3,7 @@ Vocalize — Bi-LSTM + Attention Neural Network Training
 
 Loads padded keypoint sequences from processed_data/, trains a
 Bidirectional LSTM with a custom Attention layer, and saves the
-model as action.h5.
+model as wlasl_15_gloss.keras.
 
 Usage
 ─────
@@ -231,8 +231,8 @@ def main():
         help="Training batch size (default: 16)",
     )
     parser.add_argument(
-        "--model_out", type=str, default="action.h5",
-        help="Output path for the saved model (default: action.h5)",
+        "--model_out", type=str, default="wlasl_15_gloss.keras",
+        help="Output path for the saved model (default: wlasl_15_gloss.keras)",
     )
     parser.add_argument(
         "--test_size", type=float, default=0.2,
